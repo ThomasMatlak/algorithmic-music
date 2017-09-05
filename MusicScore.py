@@ -40,10 +40,10 @@ class Note:
         self.length = length # a multiple of the unit note length, defined by the MusicScore class
 
     def get_abc(self, key):
-        """Converts the note to its abc representation and returns a str"""
+        """Converts the note to abc notation and returns a str"""
 
         if self.degree is 0:
-            return "z" * self.length # a degree of 0 represents a rest
+            return "z" + str(self.length) # a degree of 0 represents a rest
 
         if self.octave > 5: # two octaves above the middle octave
             octave_modifier = "'" * (self.octave - 5)
@@ -66,6 +66,21 @@ class Measure:
 
     def __init__(self):
         self.contents = []
+
+    def add_note(self, degree, octave, length):
+        """Appends a note to the end of the measure"""
+
+        self.contents.append(Note(degree, octave, length))
+
+    def get_abc(self, key):
+        """Converts the entire measure to abc notation and returns a str"""
+
+        abc_measure = ""
+
+        for note in self.contents:
+            abc_measure += note.get_abc(key) + " "
+
+        return abc_measure[:-2]
 
 class ScorePart:
     """
