@@ -40,7 +40,7 @@ class Note:
         self.length = length # a multiple of the unit note length, defined by the MusicScore class
 
     def get_abc(self, key):
-        """Converts the note to abc notation and returns a str"""
+        """Convert the note to abc notation and return a str"""
 
         if self.degree is 0:
             return "z" + str(self.length) # a degree of 0 represents a rest
@@ -68,12 +68,12 @@ class Measure:
         self.contents = []
 
     def add_note(self, degree, octave, length):
-        """Appends a note to the end of the measure"""
+        """Append a note to the end of the measure"""
 
         self.contents.append(Note(degree, octave, length))
 
     def get_abc(self, key):
-        """Converts the entire measure to abc notation and returns a str"""
+        """Convert the entire measure to abc notation and return a str"""
 
         abc_measure = ""
 
@@ -87,8 +87,37 @@ class ScorePart:
 
     """
 
-    def __init__(self):
-        self.instrument = ""
+    def __init__(self, part_id, name, short_name, instrument, clef):
+        """ """
+        self.part_id = part_id
+        self.name = name
+        self.short_name = short_name
+        self.instrument = instrument
+        self.clef = clef
+        self.measures = []
+
+    def add_measure(self, measure=None):
+        """Append a measure to the part"""
+
+        if not measure is None:
+            self.measures.append(measure)
+        else:
+            self.measures.append(Measure())
+
+    def get_abc(self, key):
+        """Convert the part to abc notation and return a str"""
+
+        part_abc = "V: " + self.part_id + \
+            " name=" + self.name + \
+            " subname=" + self.short_name + \
+            " clef=" + self.clef + "\n"
+
+        for measure in self.measures:
+            part_abc += " " + measure.get_abc(key) + " |"
+
+        part_abc += "]"
+
+        return part_abc
 
 class MusicScore:
     """
