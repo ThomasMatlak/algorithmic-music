@@ -124,7 +124,7 @@ class MusicScore:
 
     """
 
-    def __init__(self, key, title, composer):
+    def __init__(self, key, title, composer, meter, unit_note_length, tempo, reference_number=1):
         """
 
         """
@@ -132,10 +132,34 @@ class MusicScore:
         self.concert_key = key
         self.title = title
         self.composer = composer
+        self.meter = meter
+        self.unit_note_length = unit_note_length
+        self.tempo = tempo
+        self.reference_number = reference_number
 
         self.parts = {}
+
+    def add_part(self, part=None):
+        """Add a voice to the score"""
+
+        if not part is None:
+            self.parts[part.name] = part
 
     def get_abc(self):
         """Convert the score to abc notation and return a str."""
 
-        return ""
+        score_abc = "%abc-2.1\n"
+        score_abc += "X: " + str(self.reference_number) + "\n"
+        score_abc += "T: " + self.title + "\n"
+        score_abc += "C: " + self.composer + "\n"
+        score_abc += "M: " + self.meter + "\n"
+        score_abc += "L: " + self.unit_note_length + "\n"
+        score_abc += "Q: " + self.tempo + "\n"
+        score_abc += "K: " + self.concert_key + "\n"
+
+        score_abc += "% end of header\n"
+
+        for part_name, part in self.parts.items():
+            score_abc += part.get_abc(self.concert_key) + "\n\n"
+
+        return score_abc
