@@ -5,9 +5,9 @@ from collections import defaultdict
 import sys
 import music21 as m21
 
-# us = m21.environment.UserSettings()
-# us['musicxmlPath'] = "c:/Program Files (x86)/EasyABC/easy_abc.exe"
-# m21.environment.set('midiPath', "c:/Program Files (x86)/EasyABC/easy_abc.exe")
+us = m21.environment.UserSettings()
+us['musicxmlPath'] = "c:/Program Files (x86)/EasyABC/easy_abc.exe"
+m21.environment.set('midiPath', "c:/Program Files (x86)/EasyABC/easy_abc.exe")
 
 
 def normalize_score(score):
@@ -60,31 +60,33 @@ def main():
             interval = current_interval
             prev_note = note
 
+    # Set up the score
     generated_score = m21.stream.Score()
     generated_score.insert(0, m21.metadata.Metadata())
-    generated_score.metadata.title = "Melody based on Bach's Little Fugue in g minor"
     generated_score.metadata.composer = "Markov Chain"
     generated_score.append(m21.tempo.MetronomeMark(number=random.randint(40, 168)))
 
     # seed the melody with the first two notes; melody will start on tonic in the 5th octave
-    generated_notes = [m21.note.Note(m21.pitch.Pitch(9, octave=5), quarterLength=1)]
+    generated_notes = [m21.note.Note(m21.pitch.Pitch(0, octave=5), quarterLength=1)]
     interval = m21.interval.Interval(list(transition_counts.items())[random.randint(0, len(transition_counts))][0])
-    interval.noteStart = m21.note.Note(m21.pitch.Pitch(9, octave=5), quarterLength=1)
-    generated_notes.append(interval.noteEnd)
+    generated_notes.append(generated_notes[0].transpose(interval))
 
     count = 2
 
     # we want the melody to be a multiple of 4 beats that is >= 8 beats, ending on a pitch in the i chord
-    while count < 16 or count % 4 != 0 or not (generated_notes[count - 1].pitch.pitchClass == 9 or
-                                               generated_notes[count - 1].pitch.pitchClass == 0 or
-                                               generated_notes[count - 1].pitch.pitchClass == 3):
-        n = 0
+    # while count < 16 or count % 4 != 0 or not (generated_notes[count - 1].name == 'A' or # minor
+    #                                            generated_notes[count - 1].name == 'C' or
+    #                                            generated_notes[count - 1].name == 'E'):
+    while count < 16 or count % 4 != 0 or not (generated_notes[count - 1].name == 'C' or # Major
+                                               generated_notes[count - 1].name == 'E' or
+                                               generated_notes[count - 1].name == 'G'):
+        transition_sum = 0
         for p in transition_counts[interval.directedName]:
-            n += transition_counts[interval.directedName][p]
+            transition_sum += transition_counts[interval.directedName][p]
 
         current_probabilities = {}
         for key in list(transition_counts[interval.directedName].keys()):
-            current_probabilities[key] = float(transition_counts[interval.directedName][key] / float(n))
+            current_probabilities[key] = float(transition_counts[interval.directedName][key] / float(transition_sum))
 
         rand_num = random.random()
 
@@ -95,8 +97,7 @@ def main():
 
             if rand_num <= probability_sum:
                 interval = m21.interval.Interval(index)
-                interval.noteStart = generated_notes[count - 1]
-                generated_notes.append(interval.noteEnd)
+                generated_notes.append(generated_notes[count - 1].transpose(interval))
                 break
 
         count += 1
@@ -107,7 +108,7 @@ def main():
 
     generated_score.append(part)
 
-    generated_score.show('text')
+    generated_score.show()
 
 
 if __name__ == '__main__':
