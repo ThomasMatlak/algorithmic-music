@@ -23,31 +23,15 @@ def normalize_score(score):
     return score.transpose(i)
 
 
-def get_notes(stream):
-    """ Return a list of the scale degrees of notes in a stream """
-
-    notes = []
-
-    for note in stream.getElementsByClass(m21.note.Note):
-        notes.append(note)
-
-    return notes
-
-
-def main():
-    my_score = m21.converter.parse(sys.argv[1])
-
-    my_normalized_score = normalize_score(my_score)
-
-    # create Markov Chains for intervals and rhythms
-    interval_transitions = defaultdict(lambda :defaultdict(int))
-    rhythm_transitions = defaultdict(lambda :defaultdict(int))
+def create_transition_matrices(stream):
+    """ create Markov Chains for intervals and rhythms """
+    interval_transitions = defaultdict(lambda: defaultdict(int))
+    rhythm_transitions = defaultdict(lambda: defaultdict(int))
 
     prev_note = None
     interval = None
 
-    # for note in my_normalized_score.getElementsByClass(m21.note.Note):
-    for note in my_normalized_score[0].getElementsByClass(m21.note.Note):
+    for note in stream:
         if prev_note is None:
             prev_note = note
             continue
@@ -62,6 +46,18 @@ def main():
             rhythm_transitions[prev_note.quarterLength][note.quarterLength] += 1
             prev_note = note
 
+    return interval_transitions, rhythm_transitions
+
+
+def main():
+    my_score = m21.converter.parse(sys.argv[1])
+
+    my_normalized_score = normalize_score(my_score)
+
+    transition_matrices = create_transition_matrices(my_normalized_score[0].getElementsByClass(m21.note.Note))
+    interval_transitions = transition_matrices[0]
+    rhythm_transitions = transition_matrices[1]
+
     # Set up the score
     generated_score = m21.stream.Score()
     generated_score.insert(0, m21.metadata.Metadata())
@@ -69,16 +65,17 @@ def main():
     generated_score.append(m21.tempo.MetronomeMark(number=random.randint(40, 168)))
 
     # seed the melody with the first two notes; melody will start on tonic in the 5th octave
-    generated_notes = [m21.note.Note(m21.pitch.Pitch(0, octave=5), quarterLength=1)]
-    interval = m21.interval.Interval(list(interval_transitions.items())[random.randint(0, len(interval_transitions) - 1)][0])
+    generated_notes = [m21.note.Note(m21.pitch.Pitch(0, octave=4), quarterLength=1)]
+    interval = m21.interval.Interval(list(interval_transitions.items())[random.randrange(0, len(interval_transitions))][0])
     generated_notes.append(generated_notes[0].transpose(interval))
-    generated_notes[1].quarterLength = 1
+    generated_notes[1].quarterLength = list(rhythm_transitions.items())[random.randrange(0, len(rhythm_transitions))][0]
 
     count = 2
     beats = 2.0
 
+    # toggle between these while statements to get a major or minor end note
     # we want the melody to be a multiple of 4 beats that is >= 8 beats, ending on a pitch in the i chord
-    # while beats < 16 or beats % 4 != 0 or not (generated_notes[count - 1].name == 'A' or # minor
+    # while beats < 32 or beats % 4 != 0 or not (generated_notes[count - 1].name == 'A' or # minor
     #                                            generated_notes[count - 1].name == 'C' or
     #                                            generated_notes[count - 1].name == 'E'):
     while beats < 32 or beats % 4 != 0 or not (generated_notes[count - 1].name == 'C' or # Major
@@ -121,7 +118,9 @@ def main():
 
             if rhythm_rand_num <= rhythm_probability_sum:
                 my_note.quarterLength = index
+                break
 
+        my_note.pitch = my_note.pitch.getEnharmonic().getEnharmonic()  # this prevents more that double sharps and flats
         generated_notes.append(my_note)
 
         beats += my_note.quarterLength
