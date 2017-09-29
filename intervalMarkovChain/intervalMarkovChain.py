@@ -25,48 +25,50 @@ def normalize_score(score):
     return score.transpose(i)
 
 
-def create_transition_matrices(stream):
+def create_transition_matrices(streams):
     """ create Markov Chains for intervals and rhythms """
     interval_transitions = defaultdict(lambda: defaultdict(int))
     rhythm_transitions = defaultdict(lambda: defaultdict(int))
 
-    prev_note = None
-    interval = None
+    for stream in streams:
+        prev_note = None
+        interval = None
 
-    for note in stream:
-        if prev_note is None:
-            prev_note = note
-            continue
-        elif interval is None:
-            interval = m21.interval.Interval(prev_note, note)
-            prev_note = note
-            continue
-        else:
-            current_interval = m21.interval.Interval(prev_note, note)
-            interval_transitions[interval.directedName][current_interval.directedName] += 1
-            interval = current_interval
-            rhythm_transitions[prev_note.quarterLength][note.quarterLength] += 1
-            prev_note = note
+        for note in stream:
+            if prev_note is None:
+                prev_note = note
+                continue
+            elif interval is None:
+                interval = m21.interval.Interval(prev_note, note)
+                prev_note = note
+                continue
+            else:
+                current_interval = m21.interval.Interval(prev_note, note)
+                interval_transitions[interval.directedName][current_interval.directedName] += 1
+                interval = current_interval
+                rhythm_transitions[prev_note.quarterLength][note.quarterLength] += 1
+                prev_note = note
 
     return interval_transitions, rhythm_transitions
 
 
 def main():
-    score_title = sys.argv[1]
+    score_titles = sys.argv[1:]
 
-    my_normalized_score = None
+    normalized_scores = []
 
     if not os.path.isdir("scoreCache"):
         os.mkdir("scoreCache")
 
-    if os.path.exists("scoreCache/" + score_title + ".pickle"):
-        my_normalized_score = pickle.load(open("scoreCache/" + score_title + ".pickle", "rb"))
-    else:
-        my_score = m21.converter.parse(sys.argv[1])
-        my_normalized_score = normalize_score(my_score)
-        pickle.dump(my_normalized_score, open("scoreCache/" + score_title + ".pickle", "wb"))
+    for score_title in score_titles:
+        if os.path.exists("scoreCache/" + score_title + ".pickle"):
+            normalized_scores.append(pickle.load(open("scoreCache/" + score_title + ".pickle", "rb")))
+        else:
+            my_score = m21.converter.parse(score_title)
+            normalized_scores.append(normalize_score(my_score))
+            pickle.dump(normalized_scores[-1], open("scoreCache/" + score_title + ".pickle", "wb"))
 
-    transition_matrices = create_transition_matrices(my_normalized_score[0].getElementsByClass(m21.note.Note))
+    transition_matrices = create_transition_matrices([s[0].getElementsByClass(m21.note.Note) for s in normalized_scores])
     interval_transitions = transition_matrices[0]
     rhythm_transitions = transition_matrices[1]
 
@@ -137,6 +139,10 @@ def main():
 
         beats += my_note.quarterLength
         count += 1
+
+        # program has been running too long, end it
+        if beats > 400:
+            break
 
     part = m21.stream.Part()
     part.offset = 0.0
