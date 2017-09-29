@@ -3,6 +3,8 @@
 import random
 from collections import defaultdict
 import sys
+import os
+import pickle
 import music21 as m21
 
 us = m21.environment.UserSettings()
@@ -50,9 +52,19 @@ def create_transition_matrices(stream):
 
 
 def main():
-    my_score = m21.converter.parse(sys.argv[1])
+    score_title = sys.argv[1]
 
-    my_normalized_score = normalize_score(my_score)
+    my_normalized_score = None
+
+    if not os.path.isdir("scoreCache"):
+        os.mkdir("scoreCache")
+
+    if os.path.exists("scoreCache/" + score_title + ".pickle"):
+        my_normalized_score = pickle.load(open("scoreCache/" + score_title + ".pickle", "rb"))
+    else:
+        my_score = m21.converter.parse(sys.argv[1])
+        my_normalized_score = normalize_score(my_score)
+        pickle.dump(my_normalized_score, open("scoreCache/" + score_title + ".pickle", "wb"))
 
     transition_matrices = create_transition_matrices(my_normalized_score[0].getElementsByClass(m21.note.Note))
     interval_transitions = transition_matrices[0]
