@@ -25,34 +25,108 @@ def normalize_score(score):
     return score.transpose(i)
 
 
-def create_transition_matrices(streams):
-    """ create Markov Chains for intervals and rhythms """
-    interval_transitions = defaultdict(lambda: defaultdict(int))
-    rhythm_transitions = defaultdict(lambda: defaultdict(int))
+def generate_nested_defaultdict(depth):
+    """ Create a nested collections.defaultdict object with depth `depth` """
+    if depth == 1:
+        return defaultdict(int)
+    else:
+        return defaultdict(lambda: generate_nested_defaultdict(depth - 1))
+
+
+def arbitrary_depth_get(d, subscripts, default=None):
+    """ Access nested dict elements at arbitrary depths 
+    
+        https://stackoverflow.com/questions/28225552/is-there-a-recursive-version-of-pythons-dict-get-built-in
+    """
+    if not subscripts:
+        return d
+    key = subscripts[0]
+    if isinstance(d, int):
+        return d
+    return arbitrary_depth_get(d.get(key, default), subscripts[1:], default=default)
+
+
+def arbitrary_depth_set(subscripts, _dict={}, val=None):
+    """ Set nested dict elements at arbitrary depths 
+    
+        https://stackoverflow.com/questions/33663332/python-adding-updating-dict-element-of-any-depth
+    """
+
+    if not subscripts:
+        return _dict
+    subscripts = [s.strip() for s in subscripts]
+    for sub in subscripts[:-1]:
+        if '_x' not in locals():
+            if sub not in _dict:
+                _dict[sub] = {}
+            _x = _dict.get(sub)
+        else:
+            if sub not in _x:
+                _x[sub] = {}
+            _x = _x.get(sub)
+    _x[subscripts[-1]] = val
+    return _dict
+
+
+def create_interval_transition_matrix(streams, order):
+    """ Create the interval transition matrix for an `order`th order Markov Chain """
+    interval_transitions = generate_nested_defaultdict(order + 1)
 
     for stream in streams:
-        prev_note = None
-        interval = None
+        prev_notes = []
 
-        for note in stream:
-            if prev_note is None:
-                prev_note = note
-                continue
-            elif interval is None:
-                interval = m21.interval.Interval(prev_note, note)
-                prev_note = note
+        for n in range(len(stream)):
+            note = stream[n]
+
+            if len(prev_notes) < (order + 1):
+                prev_notes.append(note)
                 continue
             else:
-                current_interval = m21.interval.Interval(prev_note, note)
-                interval_transitions[interval.directedName][current_interval.directedName] += 1
-                interval = current_interval
-                rhythm_transitions[prev_note.quarterLength][note.quarterLength] += 1
-                prev_note = note
+                intervals = []
+                for i in range(order):
+                    intervals.append(m21.interval.Interval(prev_notes[i], prev_notes[i + 1]))
 
-    return interval_transitions, rhythm_transitions
+                intervals.append(m21.interval.Interval(prev_notes[-1], note))
+
+                interval_transitions = arbitrary_depth_set(
+                    [interval.directedName for interval in intervals[0:order + 1]],
+                    interval_transitions,
+                    arbitrary_depth_get(interval_transitions, [interval.directedName for interval in intervals[0:order + 1]], default=0) + 1
+                )
+
+                for i in range(order):
+                    prev_notes[i] = prev_notes[i + 1]
+
+                prev_notes[order] = note
+
+    return interval_transitions
 
 
-def main():
+def create_rhythm_transition_matrix(streams, order):
+    """ Create the rhythmic transition matrix for an `order`th order Markov Chain """
+    rhythm_transitions = generate_nested_defaultdict(order + 1)
+
+    for stream in streams:
+        prev_notes = []
+
+        for n in range(len(stream)):
+            note = stream[n]
+
+            if len(prev_notes) < (order + 1):
+                prev_notes.append(note)
+                continue
+            else:
+                rhythm_transitions[prev_notes[1].quarterLength][note.quarterLength] += 1
+
+                for i in range(order):
+                    prev_notes[i] = prev_notes[i + 1]
+
+                prev_notes[order] = note
+
+    return rhythm_transitions
+
+
+def main(interval_order, rhythm_order):
     score_titles = sys.argv[1:]
 
     normalized_scores = []
@@ -68,9 +142,10 @@ def main():
             normalized_scores.append(normalize_score(my_score))
             pickle.dump(normalized_scores[-1], open("scoreCache/" + score_title + ".pickle", "wb"))
 
-    transition_matrices = create_transition_matrices([s[0].getElementsByClass(m21.note.Note) for s in normalized_scores])
-    interval_transitions = transition_matrices[0]
-    rhythm_transitions = transition_matrices[1]
+    note_streams = [s[0].getElementsByClass(m21.note.Note) for s in normalized_scores]
+
+    interval_transitions = create_interval_transition_matrix(note_streams, interval_order)
+    rhythm_transitions = create_rhythm_transition_matrix(note_streams, rhythm_order)
 
     # Set up the score
     generated_score = m21.stream.Score()
@@ -78,14 +153,18 @@ def main():
     generated_score.metadata.composer = "Markov Chain"
     generated_score.append(m21.tempo.MetronomeMark(number=random.randint(40, 168)))
 
-    # seed the melody with the first two notes; melody will start on tonic in the 5th octave
-    generated_notes = [m21.note.Note(m21.pitch.Pitch(0, octave=4), quarterLength=1)]
-    interval = m21.interval.Interval(list(interval_transitions.items())[random.randrange(0, len(interval_transitions))][0])
-    generated_notes.append(generated_notes[0].transpose(interval))
-    generated_notes[1].quarterLength = list(rhythm_transitions.items())[random.randrange(0, len(rhythm_transitions))][0]
+    # TODO Allow user to provide their own seed input
+    # seed the melody with the first `interval_order` + 1 notes;
+    # first notes
+    generated_notes = [
+        m21.note.Note(m21.pitch.Pitch(0, octave=4), quarterLength=1),
+        m21.note.Note(m21.pitch.Pitch(4, octave=4), quarterLength=0.5),
+        m21.note.Note(m21.pitch.Pitch(9, octave=4), quarterLength=0.5),
+        m21.note.Note(m21.pitch.Pitch(11, octave=4), quarterLength=0.5)
+    ]
 
-    count = 2
-    beats = 2.0
+    count = len(generated_notes)
+    beats = sum([g.quarterLength for g in generated_notes])
 
     # toggle between these while statements to get a major or minor end note
     # we want the melody to be a multiple of 4 beats that is >= 8 beats, ending on a pitch in the i chord
@@ -95,17 +174,24 @@ def main():
     while beats < 32 or beats % 4 != 0 or not (generated_notes[count - 1].name == 'C' or # Major
                                                generated_notes[count - 1].name == 'E' or
                                                generated_notes[count - 1].name == 'G'):
-        transition_sum = 0.0
-        for p in interval_transitions[interval.directedName]:
-            transition_sum += interval_transitions[interval.directedName][p]
+        prev_interval_names = []
+        for i in range(interval_order):
+            prev_interval_names.append(m21.interval.Interval(generated_notes[count - (interval_order + 1) + i], generated_notes[count - interval_order + i]).directedName)
+
+        interval_subset = arbitrary_depth_get(interval_transitions, prev_interval_names, default={})
+
+        interval_sum = 0.0
+
+        for p in interval_subset:
+            interval_sum += interval_subset[p]
 
         rhythm_sum = 0.0
         for p in rhythm_transitions[generated_notes[count - 1].quarterLength]:
             rhythm_sum += rhythm_transitions[generated_notes[count - 1].quarterLength][p]
 
         curr_interval_probabilities = {}
-        for key in list(interval_transitions[interval.directedName].keys()):
-            curr_interval_probabilities[key] = interval_transitions[interval.directedName][key] / transition_sum
+        for key in list(interval_subset.keys()):
+            curr_interval_probabilities[key] = interval_subset[key] / interval_sum
 
         curr_rhythm_probabilities = {}
         for key in list(rhythm_transitions[generated_notes[count - 1].quarterLength].keys()):
@@ -126,6 +212,10 @@ def main():
                 interval = m21.interval.Interval(index)
                 my_note = generated_notes[count - 1].transpose(interval)
                 break
+
+        if my_note is None:
+            print("Encountered a sequence of intervals not seen during training, exiting.")
+            break
 
         for index in curr_rhythm_probabilities:
             rhythm_probability_sum += curr_rhythm_probabilities[index]
@@ -154,4 +244,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(3, 1)
