@@ -34,8 +34,8 @@ def generate_nested_defaultdict(depth):
 
 
 def arbitrary_depth_get(d, subscripts, default=None):
-    """ Access nested dict elements at arbitrary depths 
-    
+    """ Access nested dict elements at arbitrary depths
+
         https://stackoverflow.com/questions/28225552/is-there-a-recursive-version-of-pythons-dict-get-built-in
     """
     if not subscripts:
@@ -47,14 +47,14 @@ def arbitrary_depth_get(d, subscripts, default=None):
 
 
 def arbitrary_depth_set(subscripts, _dict={}, val=None):
-    """ Set nested dict elements at arbitrary depths 
-    
+    """ Set nested dict elements at arbitrary depths
+
         https://stackoverflow.com/questions/33663332/python-adding-updating-dict-element-of-any-depth
     """
 
     if not subscripts:
         return _dict
-    subscripts = [s.strip() for s in subscripts]
+    # subscripts = [s.strip() for s in subscripts]
     for sub in subscripts[:-1]:
         if '_x' not in locals():
             if sub not in _dict:
@@ -116,7 +116,12 @@ def create_rhythm_transition_matrix(streams, order):
                 prev_notes.append(note)
                 continue
             else:
-                rhythm_transitions[prev_notes[1].quarterLength][note.quarterLength] += 1
+                rhythm_transitions = arbitrary_depth_set(
+                    [prev_note.quarterLength for prev_note in prev_notes],
+                    rhythm_transitions,
+                    arbitrary_depth_get(rhythm_transitions, [prev_note.quarterLength for prev_note in prev_notes], default=0) + 1
+                )
+                # rhythm_transitions[prev_notes[1].quarterLength][note.quarterLength] += 1
 
                 for i in range(order):
                     prev_notes[i] = prev_notes[i + 1]
@@ -157,10 +162,10 @@ def main(interval_order, rhythm_order):
     # seed the melody with the first `interval_order` + 1 notes;
     # first notes
     generated_notes = [
-        m21.note.Note(m21.pitch.Pitch(0, octave=4), quarterLength=1),
-        m21.note.Note(m21.pitch.Pitch(4, octave=4), quarterLength=0.5),
-        m21.note.Note(m21.pitch.Pitch(9, octave=4), quarterLength=0.5),
-        m21.note.Note(m21.pitch.Pitch(11, octave=4), quarterLength=0.5)
+        m21.note.Note(m21.pitch.Pitch(7, octave=3), quarterLength=0.25),
+        m21.note.Note(m21.pitch.Pitch(2, octave=4), quarterLength=0.25),
+        m21.note.Note(m21.pitch.Pitch(11, octave=4), quarterLength=0.25),
+        m21.note.Note(m21.pitch.Pitch(9, octave=4), quarterLength=0.25)
     ]
 
     count = len(generated_notes)
@@ -174,28 +179,36 @@ def main(interval_order, rhythm_order):
     while beats < 32 or beats % 4 != 0 or not (generated_notes[count - 1].name == 'C' or # Major
                                                generated_notes[count - 1].name == 'E' or
                                                generated_notes[count - 1].name == 'G'):
+        # interval
         prev_interval_names = []
         for i in range(interval_order):
             prev_interval_names.append(m21.interval.Interval(generated_notes[count - (interval_order + 1) + i], generated_notes[count - interval_order + i]).directedName)
 
+        prev_note_lengths = []
+        for r in range(rhythm_order):
+            prev_note_lengths.append(generated_notes[count - interval_order + i].quarterLength)
+
+
         interval_subset = arbitrary_depth_get(interval_transitions, prev_interval_names, default={})
+        rhythm_subset = arbitrary_depth_get(rhythm_transitions, prev_note_lengths, default={})
+
 
         interval_sum = 0.0
-
         for p in interval_subset:
             interval_sum += interval_subset[p]
 
         rhythm_sum = 0.0
-        for p in rhythm_transitions[generated_notes[count - 1].quarterLength]:
-            rhythm_sum += rhythm_transitions[generated_notes[count - 1].quarterLength][p]
+        for p in rhythm_subset:
+            rhythm_sum += rhythm_subset[p]
+
 
         curr_interval_probabilities = {}
         for key in list(interval_subset.keys()):
             curr_interval_probabilities[key] = interval_subset[key] / interval_sum
 
         curr_rhythm_probabilities = {}
-        for key in list(rhythm_transitions[generated_notes[count - 1].quarterLength].keys()):
-            curr_rhythm_probabilities[key] = rhythm_transitions[generated_notes[count - 1].quarterLength][key] / rhythm_sum
+        for key in list(rhythm_subset.keys()):
+            curr_rhythm_probabilities[key] = rhythm_subset[key] / rhythm_sum
 
         interval_rand_num = random.random()
         rhythm_rand_num = random.random()
@@ -244,4 +257,4 @@ def main(interval_order, rhythm_order):
 
 
 if __name__ == '__main__':
-    main(3, 1)
+    main(3, 3)
