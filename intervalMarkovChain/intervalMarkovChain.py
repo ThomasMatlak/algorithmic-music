@@ -5,6 +5,7 @@ from collections import defaultdict
 import sys
 import os
 import pickle
+from markovChain import MarkovChain
 import music21 as m21
 
 us = m21.environment.UserSettings()
@@ -25,112 +26,6 @@ def normalize_score(score):
     return score.transpose(i)
 
 
-def generate_nested_defaultdict(depth):
-    """ Create a nested collections.defaultdict object with depth `depth` """
-    if depth == 1:
-        return defaultdict(int)
-    else:
-        return defaultdict(lambda: generate_nested_defaultdict(depth - 1))
-
-
-def arbitrary_depth_get(d, subscripts, default=None):
-    """ Access nested dict elements at arbitrary depths
-
-        https://stackoverflow.com/questions/28225552/is-there-a-recursive-version-of-pythons-dict-get-built-in
-    """
-    if not subscripts:
-        return d
-    key = subscripts[0]
-    if isinstance(d, int):
-        return d
-    return arbitrary_depth_get(d.get(key, default), subscripts[1:], default=default)
-
-
-def arbitrary_depth_set(subscripts, _dict={}, val=None):
-    """ Set nested dict elements at arbitrary depths
-
-        https://stackoverflow.com/questions/33663332/python-adding-updating-dict-element-of-any-depth
-    """
-
-    if not subscripts:
-        return _dict
-    # subscripts = [s.strip() for s in subscripts]
-    for sub in subscripts[:-1]:
-        if '_x' not in locals():
-            if sub not in _dict:
-                _dict[sub] = {}
-            _x = _dict.get(sub)
-        else:
-            if sub not in _x:
-                _x[sub] = {}
-            _x = _x.get(sub)
-    _x[subscripts[-1]] = val
-    return _dict
-
-
-def create_interval_transition_matrix(streams, order):
-    """ Create the interval transition matrix for an `order`th order Markov Chain """
-    interval_transitions = generate_nested_defaultdict(order + 1)
-
-    for stream in streams:
-        prev_notes = []
-
-        for n in range(len(stream)):
-            note = stream[n]
-
-            if len(prev_notes) < (order + 1):
-                prev_notes.append(note)
-                continue
-            else:
-                intervals = []
-                for i in range(order):
-                    intervals.append(m21.interval.Interval(prev_notes[i], prev_notes[i + 1]))
-
-                intervals.append(m21.interval.Interval(prev_notes[-1], note))
-
-                interval_transitions = arbitrary_depth_set(
-                    [interval.directedName for interval in intervals[0:order + 1]],
-                    interval_transitions,
-                    arbitrary_depth_get(interval_transitions, [interval.directedName for interval in intervals[0:order + 1]], default=0) + 1
-                )
-
-                for i in range(order):
-                    prev_notes[i] = prev_notes[i + 1]
-
-                prev_notes[order] = note
-
-    return interval_transitions
-
-
-def create_rhythm_transition_matrix(streams, order):
-    """ Create the rhythmic transition matrix for an `order`th order Markov Chain """
-    rhythm_transitions = generate_nested_defaultdict(order + 1)
-
-    for stream in streams:
-        prev_notes = []
-
-        for n in range(len(stream)):
-            note = stream[n]
-
-            if len(prev_notes) < (order + 1):
-                prev_notes.append(note)
-                continue
-            else:
-                rhythm_transitions = arbitrary_depth_set(
-                    [prev_note.quarterLength for prev_note in prev_notes],
-                    rhythm_transitions,
-                    arbitrary_depth_get(rhythm_transitions, [prev_note.quarterLength for prev_note in prev_notes], default=0) + 1
-                )
-                # rhythm_transitions[prev_notes[1].quarterLength][note.quarterLength] += 1
-
-                for i in range(order):
-                    prev_notes[i] = prev_notes[i + 1]
-
-                prev_notes[order] = note
-
-    return rhythm_transitions
-
-
 def main(interval_order, rhythm_order):
     score_titles = sys.argv[1:]
 
@@ -149,8 +44,11 @@ def main(interval_order, rhythm_order):
 
     note_streams = [s[0].getElementsByClass(m21.note.Note) for s in normalized_scores]
 
-    interval_transitions = create_interval_transition_matrix(note_streams, interval_order)
-    rhythm_transitions = create_rhythm_transition_matrix(note_streams, rhythm_order)
+    interval_markov_chain = MarkovChain(interval_order)
+    interval_markov_chain.create_transition_matrix(note_streams, "i")
+
+    rhythm_markov_chain = MarkovChain(rhythm_order)
+    rhythm_markov_chain.create_transition_matrix(note_streams, "r")
 
     # Set up the score
     generated_score = m21.stream.Score()
@@ -189,8 +87,8 @@ def main(interval_order, rhythm_order):
             prev_note_lengths.append(generated_notes[count - interval_order + i].quarterLength)
 
 
-        interval_subset = arbitrary_depth_get(interval_transitions, prev_interval_names, default={})
-        rhythm_subset = arbitrary_depth_get(rhythm_transitions, prev_note_lengths, default={})
+        interval_subset = interval_markov_chain.arbitrary_depth_get(interval_markov_chain.transition_matrix, prev_interval_names, default={})
+        rhythm_subset = rhythm_markov_chain.arbitrary_depth_get(rhythm_markov_chain.transition_matrix, prev_note_lengths, default={})
 
 
         interval_sum = 0.0
