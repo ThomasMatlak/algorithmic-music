@@ -27,6 +27,10 @@ def normalize_score(score):
 
 
 def main(interval_order, rhythm_order):
+    min_beats = 32
+    beats_per_measure = 4
+    major = True
+
     score_titles = sys.argv[1:]
 
     normalized_scores = []
@@ -69,14 +73,12 @@ def main(interval_order, rhythm_order):
     count = len(generated_notes)
     beats = sum([g.quarterLength for g in generated_notes])
 
-    # toggle between these while statements to get a major or minor end note
-    # we want the melody to be a multiple of 4 beats that is >= 8 beats, ending on a pitch in the i chord
-    # while beats < 32 or beats % 4 != 0 or not (generated_notes[count - 1].name == 'A' or # minor
-    #                                            generated_notes[count - 1].name == 'C' or
-    #                                            generated_notes[count - 1].name == 'E'):
-    while beats < 32 or beats % 4 != 0 or not (generated_notes[count - 1].name == 'C' or # Major
-                                               generated_notes[count - 1].name == 'E' or
-                                               generated_notes[count - 1].name == 'G'):
+    if major:
+        ending_pitches = ('C', 'E', 'G')
+    else:
+        ending_pitches = ('A', 'C', 'E')
+
+    while beats < min_beats or beats % beats_per_measure != 0 or not generated_notes[count - 1].name in ending_pitches:
         # interval
         prev_interval_names = []
         for i in range(interval_order):
@@ -86,10 +88,8 @@ def main(interval_order, rhythm_order):
         for r in range(rhythm_order):
             prev_note_lengths.append(generated_notes[count - interval_order + i].quarterLength)
 
-
-        interval_subset = interval_markov_chain.arbitrary_depth_get(interval_markov_chain.transition_matrix, prev_interval_names, default={})
-        rhythm_subset = rhythm_markov_chain.arbitrary_depth_get(rhythm_markov_chain.transition_matrix, prev_note_lengths, default={})
-
+        interval_subset = interval_markov_chain.arbitrary_depth_get(prev_interval_names)
+        rhythm_subset = rhythm_markov_chain.arbitrary_depth_get(prev_note_lengths)
 
         interval_sum = 0.0
         for p in interval_subset:
@@ -97,8 +97,7 @@ def main(interval_order, rhythm_order):
 
         rhythm_sum = 0.0
         for p in rhythm_subset:
-            rhythm_sum += rhythm_subset[p]
-
+            rhythm_sum += p
 
         curr_interval_probabilities = {}
         for key in list(interval_subset.keys()):

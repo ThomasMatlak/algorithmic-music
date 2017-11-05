@@ -1,6 +1,7 @@
 import music21 as m21
 from collections import defaultdict
 
+
 class MarkovChain(object):
     """  """
 
@@ -16,19 +17,20 @@ class MarkovChain(object):
         else:
             return defaultdict(lambda: self.generate_nested_defaultdict(depth - 1))
 
-
-    def arbitrary_depth_get(self, d, subscripts, default=None):
+    def arbitrary_depth_get(self, subscripts, default=None, d=None):
         """ Access nested dict elements at arbitrary depths
 
             https://stackoverflow.com/questions/28225552/is-there-a-recursive-version-of-pythons-dict-get-built-in
         """
+        if d is None:
+            d = self.transition_matrix
+
         if not subscripts:
             return d
         key = subscripts[0]
         if isinstance(d, int):
             return d
-        return self.arbitrary_depth_get(d.get(key, default), subscripts[1:], default=default)
-
+        return self.arbitrary_depth_get(subscripts[1:], default=default, d=d.get(key, default))
 
     def arbitrary_depth_set(self, subscripts, _dict={}, val=None):
         """ Set nested dict elements at arbitrary depths
@@ -50,7 +52,7 @@ class MarkovChain(object):
         _x[subscripts[-1]] = val
         return _dict
 
-    def create_transition_matrix(self, streams, chainType):
+    def create_transition_matrix(self, streams, chain_type):
         """  """
         for stream in streams:
             prev_notes = []
@@ -62,7 +64,7 @@ class MarkovChain(object):
                     prev_notes.append(note)
                     continue
                 else:
-                    if chainType == "interval" or chainType == "i":
+                    if chain_type == "interval" or chain_type == "i":
                         intervals = []
                         for i in range(self.order):
                             intervals.append(m21.interval.Interval(prev_notes[i], prev_notes[i + 1]))
@@ -72,13 +74,13 @@ class MarkovChain(object):
                         self.transition_matrix = self.arbitrary_depth_set(
                             [interval.directedName for interval in intervals[0:self.order + 1]],
                             self.transition_matrix,
-                            self.arbitrary_depth_get(self.transition_matrix, [interval.directedName for interval in intervals[0:self.order + 1]], default=0) + 1
+                            self.arbitrary_depth_get([interval.directedName for interval in intervals[0:self.order + 1]], default=0) + 1
                         )
-                    elif chainType == "rhythm" or chainType == "r":
+                    elif chain_type == "rhythm" or chain_type == "r":
                         self.transition_matrix = self.arbitrary_depth_set(
                             [prev_note.quarterLength for prev_note in prev_notes],
                             self.transition_matrix,
-                            self.arbitrary_depth_get(self.transition_matrix, [prev_note.quarterLength for prev_note in prev_notes], default=0) + 1
+                            self.arbitrary_depth_get([prev_note.quarterLength for prev_note in prev_notes], default=0) + 1
                         )
 
                     for i in range(self.order):
