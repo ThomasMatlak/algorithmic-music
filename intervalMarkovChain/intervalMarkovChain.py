@@ -98,7 +98,7 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
 
         prev_note_lengths = []
         for r in range(rhythm_order):
-            prev_note_lengths.append(generated_notes[count - interval_order + i].quarterLength)
+            prev_note_lengths.append(generated_notes[count - interval_order + r].quarterLength)
 
         interval_subset = interval_markov_chain.arbitrary_depth_dict_get(prev_interval_names, {})
         rhythm_subset = rhythm_markov_chain.arbitrary_depth_dict_get(prev_note_lengths, {})
