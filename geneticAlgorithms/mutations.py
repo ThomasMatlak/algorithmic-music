@@ -56,3 +56,33 @@ def retrograde_inverse(stream):
 
 def inverse_retrograde(stream):
     return inverse(retrograde(stream))
+
+
+def crossover(parent1, parent2, crossover_points=[]):
+    """ """
+    parent1 = parent1.flat.getElementsByClass(m21.note.Note)
+    parent2 = parent2.flat.getElementsByClass(m21.note.Note)
+    
+    child1 = []
+    child2 = []
+
+    prev_crossover_point = 0
+
+    for i, crossover_point in enumerate(crossover_points):
+        if i % 2 is 0:
+            child1 += parent1[prev_crossover_point:crossover_point]
+            child2 += parent2[prev_crossover_point:crossover_point]
+        else:
+            child1 += parent2[prev_crossover_point:crossover_point]
+            child2 += parent1[prev_crossover_point:crossover_point]
+
+        prev_crossover_point = crossover_point
+
+    if len(crossover_points) % 2 is 0:
+        child1 += parent1[prev_crossover_point:]
+        child2 += parent2[prev_crossover_point:]
+    else:
+        child1 += parent2[prev_crossover_point:]
+        child2 += parent1[prev_crossover_point:]
+
+    return m21.stream.Stream(child1), m21.stream.Stream(child2)
