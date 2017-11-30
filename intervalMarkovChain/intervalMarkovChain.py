@@ -7,7 +7,9 @@ import os
 import pickle
 from markovChain import MarkovChain
 import music21 as m21
+import glob
 import pprint
+
 us = m21.environment.UserSettings()
 us['musicxmlPath'] = "c:/Program Files (x86)/EasyABC/easy_abc.exe"
 m21.environment.set('midiPath', "c:/Program Files (x86)/EasyABC/easy_abc.exe")
@@ -100,8 +102,8 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
         for r in range(rhythm_order):
             prev_note_lengths.append(generated_notes[count - interval_order + r].quarterLength)
 
-        interval_subset = interval_markov_chain.arbitrary_depth_dict_get(prev_interval_names, {})
-        rhythm_subset = rhythm_markov_chain.arbitrary_depth_dict_get(prev_note_lengths, {})
+        interval_subset = interval_markov_chain.get_transitions_from_state(prev_interval_names)
+        rhythm_subset = rhythm_markov_chain.get_transitions_from_state(prev_note_lengths)
 
         interval_sum = 0.0
         for p in interval_subset:
@@ -166,6 +168,7 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
 
     return generated_score
 
+
 def main():
     min_beats = 32
     max_beats = 400
@@ -175,9 +178,10 @@ def main():
     score_titles = sys.argv[1:]
 
     if len(score_titles) == 0:
-        score_titles = m21.corpus.getComposer('bach')[:10]
+        # score_titles = m21.corpus.getComposer('bach')[:10]
+        score_titles = glob.glob('../corpus/*.mid')
 
-    generated_score = generate_melody(score_titles, 3, 2, min_beats,max_beats, beats_per_measure, major)
+    generated_score = generate_melody(score_titles, 3, 2, min_beats, max_beats, beats_per_measure, major)
     generated_score.show()
 
 

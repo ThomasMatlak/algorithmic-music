@@ -36,6 +36,11 @@ class MarkovChain(object):
         return self.arbitrary_depth_dict_get(subscripts[1:], default, nested_dict.get(key, default))
 
 
+    def get_transitions_from_state(self, prev_intervals):
+        """ A wrapper function for arbitrary_depth_dict_get """
+        return self.arbitrary_depth_dict_get(prev_intervals, {})
+
+
     def arbitrary_depth_dict_set(self, subscripts, _dict={}, val=None):
         """ Set nested dict elements at arbitrary depths
 
