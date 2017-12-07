@@ -1,17 +1,20 @@
 #!/usr/bin/python3
 
+"""
+Code to generate melodies using Markov Chains
+"""
+
 import random
-from collections import defaultdict
 import sys
 import os
 import pickle
-from markovChain import MarkovChain
-import music21 as m21
 import glob
-import pprint
+import re
+import music21 as m21
+from markovChain import MarkovChain
 
-us = m21.environment.UserSettings()
-us['musicxmlPath'] = "c:/Program Files (x86)/EasyABC/easy_abc.exe"
+US = m21.environment.UserSettings()
+US['musicxmlPath'] = "c:/Program Files (x86)/EasyABC/easy_abc.exe"
 m21.environment.set('midiPath', "c:/Program Files (x86)/EasyABC/easy_abc.exe")
 
 
@@ -37,7 +40,8 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
 
     for score_title in corpus:
         # normalized_scores.append(normalize_score(m21.converter.parse(score_title)))
-        savable_file_name = score_title.replace("\\", "-").replace("/", "-").replace(":", "-")
+        pattern = re.compile(r"^.*[\/\\]([^\/\\]+\.mid)$")
+        savable_file_name = pattern.search(score_title).group(1)
 
         if os.path.isfile("../scoreCache/" + savable_file_name + ".pickle"):
             normalized_scores.append(pickle.load(open("../scoreCache/" + savable_file_name + ".pickle", "rb")))
@@ -68,9 +72,8 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
     generated_score.metadata.composer = "Markov Chain"
     generated_score.append(m21.tempo.MetronomeMark(number=random.randint(40, 168)))
 
+    # seed the melody with the first max(`interval_order`, `rhythm_order`) + 1 notes
     # TODO Allow user to provide their own seed input
-    # seed the melody with the first `interval_order` + 1 notes;
-    # first notes
     generated_notes = [
         # m21.note.Note(m21.pitch.Pitch(0, octave=3), quarterLength=0.25),
         # m21.note.Note(m21.pitch.Pitch(7, octave=3), quarterLength=0.25),
@@ -100,20 +103,12 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
 
         prev_note_lengths = []
         for r in range(rhythm_order):
-            prev_note_lengths.append(generated_notes[count - interval_order + r].quarterLength)
+            prev_note_lengths.append(generated_notes[count - rhythm_order + r].quarterLength)
 
         interval_subset = interval_markov_chain.get_transitions_from_state(prev_interval_names)
         rhythm_subset = rhythm_markov_chain.get_transitions_from_state(prev_note_lengths)
 
         interval_sum = 0.0
-        for p in interval_subset:
-            try:
-                interval_sum += interval_subset[p]
-            except TypeError:
-                pprint.pprint(interval_markov_chain.transition_matrix)
-                print(prev_interval_names)
-                print(p, interval_subset == interval_markov_chain.transition_matrix)
-                break
 
         rhythm_sum = 0.0
         for p in rhythm_subset:
@@ -154,7 +149,8 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
                 my_note.quarterLength = index
                 break
 
-        my_note.pitch = my_note.pitch.getEnharmonic().getEnharmonic() # this prevents more that double sharps and flats
+        # prevent more that double sharps and flats
+        my_note.pitch = my_note.pitch.getEnharmonic().getEnharmonic()
         generated_notes.append(my_note)
 
         beats += my_note.quarterLength
@@ -177,7 +173,7 @@ def main():
 
     score_titles = sys.argv[1:]
 
-    if len(score_titles) == 0:
+    if not score_titles:
         # score_titles = m21.corpus.getComposer('bach')[:10]
         score_titles = glob.glob('../corpus/*.mid')
 
