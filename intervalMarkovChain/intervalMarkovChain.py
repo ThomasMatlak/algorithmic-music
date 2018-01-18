@@ -109,10 +109,12 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
         rhythm_subset = rhythm_markov_chain.get_transitions_from_state(prev_note_lengths)
 
         interval_sum = 0.0
+        for key in interval_subset:
+            interval_sum += interval_subset[key]
 
         rhythm_sum = 0.0
-        for p in rhythm_subset:
-            rhythm_sum += p
+        for r in rhythm_subset:
+            rhythm_sum += r
 
         curr_interval_probabilities = {}
         for key in list(interval_subset.keys()):

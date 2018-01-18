@@ -1,6 +1,7 @@
 import music21 as m21
 from collections import defaultdict
 
+
 class MarkovChain(object):
     """  """
 
@@ -15,7 +16,6 @@ class MarkovChain(object):
             return defaultdict(int)
         else:
             return defaultdict(lambda: self.generate_nested_defaultdict(depth - 1))
-
 
     def arbitrary_depth_dict_get(self, subscripts, default=None, nested_dict=-1):
         """ Access nested dict elements at arbitrary depths
@@ -35,11 +35,9 @@ class MarkovChain(object):
 
         return self.arbitrary_depth_dict_get(subscripts[1:], default, nested_dict.get(key, default))
 
-
     def get_transitions_from_state(self, prev_intervals):
         """ A wrapper function for arbitrary_depth_dict_get """
         return self.arbitrary_depth_dict_get(prev_intervals, {})
-
 
     def arbitrary_depth_dict_set(self, subscripts, _dict={}, val=None):
         """ Set nested dict elements at arbitrary depths
