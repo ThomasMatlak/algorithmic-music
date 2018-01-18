@@ -18,17 +18,17 @@ HM_EPOCHS = 5
 N_CLASSES = 2
 BATCH_SIZE = 64
 
-CHUNK_SIZE = 12 # for one hot encoding pitch class
-N_CHUNKS = 64 # how many 16th notes should be examined at once?
-RNN_SIZE = 128 # how many nodes to pass through
+CHUNK_SIZE = 12  # for one hot encoding pitch class
+N_CHUNKS = 64  # how many 16th notes should be examined at once?
+RNN_SIZE = 128  # how many nodes to pass through
 
 _x = tf.placeholder('float', [None, N_CHUNKS, CHUNK_SIZE])
 _y = tf.placeholder(tf.float32, [None, 2])
 
 
 def recurrent_neural_network(x):
-    layer = {'weights':tf.Variable(tf.random_normal([RNN_SIZE, N_CLASSES])),
-             'biases':tf.Variable(tf.random_normal([N_CLASSES]))}
+    layer = {'weights': tf.Variable(tf.random_normal([RNN_SIZE, N_CLASSES])),
+             'biases': tf.Variable(tf.random_normal([N_CLASSES]))}
 
     x = tf.transpose(x, [1, 0, 2])
     x = tf.reshape(x, [-1, CHUNK_SIZE])
@@ -67,6 +67,9 @@ def reshape_music_data(input_data):
 
 
 def train_neural_network(x, train_input, train_labels):
+    """
+
+    """
     prediction = recurrent_neural_network(x)
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=_y))
     optimizer = tf.train.AdamOptimizer().minimize(cost)
@@ -74,13 +77,17 @@ def train_neural_network(x, train_input, train_labels):
     training_data_ratio = 0.7
     split_point = int(len(train_labels) * training_data_ratio)
 
-    with tf.Session() as sess:
+    model_accuracy = 0.0
+
+    sess = tf.Session()
+
+    while model_accuracy < 0.8:  # we want better than 80% accuracy
         sess.run(tf.global_variables_initializer())
 
         for epoch in range(HM_EPOCHS):
             epoch_loss = 0
 
-            for _ in range(1): # can be changed if multiple batches are used
+            for _ in range(1):  # can be changed if multiple batches are used
                 epoch_x = train_input[:split_point]
                 epoch_y = train_labels[:split_point]
                 epoch_x = reshape_music_data(epoch_x)
@@ -93,13 +100,20 @@ def train_neural_network(x, train_input, train_labels):
         correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(_y, 1))
 
         accuracy = tf.reduce_mean(tf.cast(correct, 'float'))
-        print('Accuracy:', accuracy.eval({_x: reshape_music_data(train_input[split_point:]), _y: train_labels[split_point:]}))
+        model_accuracy = accuracy.eval({_x: reshape_music_data(train_input[split_point:]), _y: train_labels[split_point:]}, session=sess)
+        print('Accuracy:', model_accuracy)
+
+    # print(sess.run(prediction, feed_dict={_x: reshape_music_data([train_input[0]])}), train_labels[0])
+    # print(evaluate_part(prediction, sess, train_input[0]))
+
+    return sess, prediction
 
 
-def evaluate_part(model, input_data):
-    """ Use the provided `model` to determine how close `input_data` is to the training music """
+def evaluate_part(model, session, input_data):
+    """ Use the provided `model` to determine how close `input_data` is to the training music -- use for a single imput """
     
-    return 0.5
+    # return session.run(model, feed_dict={_x: reshape_music_data(convert_part(input_data))})
+    return session.run(model, feed_dict={_x: reshape_music_data([input_data])})
 
 
 def convert_part(part):
@@ -107,7 +121,7 @@ def convert_part(part):
     converted_part = []
     for note in part:
         if note.quarterLength / 0.25 - int(note.quarterLength / 0.25) != 0:
-            return False # TODO be able to handle triplets
+            return False  # TODO be able to handle triplets
 
         note_len = note.quarterLength
         note.quarterLength = 0.25
@@ -130,7 +144,7 @@ def normalize_score(score):
     return score.transpose(i)
 
 
-def main():
+def train_model_with_data():
     """ Train the LSTM network with data from the local corpus """
     training_file_names = glob.glob("../corpus/*.mid")
     training_data = []
@@ -142,7 +156,7 @@ def main():
         os.mkdir("../scoreCache")
 
     for score_title in training_file_names:
-        pattern = re.compile(r"^.*[\/\\]([^\/\\]+\.mid)$")
+        pattern = re.compile(r"^.*[/\\]([^/\\]+\.mid)$")
         savable_file_name = pattern.search(score_title).group(1)
 
         if os.path.isfile("../scoreCache/" + savable_file_name + ".pickle"):
@@ -158,7 +172,7 @@ def main():
         # convert the part entirely to sixteenth notes
         converted_part = convert_part(part)
         if converted_part is False or not converted_part:
-            continue # part had triplets in it, skip
+            continue  # part had triplets in it, skip
 
         measures_in_piece = len(converted_part) // 16
 
@@ -167,7 +181,7 @@ def main():
             sample = []
 
             for i in range(N_CHUNKS):
-                sample.append(converted_part[(offset * 16) + i]) # TODO simplify this?
+                sample.append(converted_part[(offset * 16) + i])  # TODO simplify this?
 
             training_data.append(sample)
             training_labels.append([1, 0])
@@ -182,7 +196,16 @@ def main():
     random.shuffle(zipped_data)
     training_data, training_labels = zip(*zipped_data)
 
-    train_neural_network(_x, training_data, training_labels)
+    return train_neural_network(_x, training_data, training_labels)
+
+
+def main():
+    session, trained_model = train_model_with_data()
+
+    # Save the model for later use
+    saver = tf.train.Saver()
+    saver.save(session, './lstm_model')
+
 
 if __name__ == "__main__":
     main()

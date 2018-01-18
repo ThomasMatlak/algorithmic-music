@@ -4,6 +4,7 @@ Code to alter music21 streams
 
 import music21 as m21
 
+
 def transpose(stream, interval=0):
     """ Transpose the stream by the specified interval """
     return stream.transpose(interval)
