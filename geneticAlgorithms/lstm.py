@@ -116,7 +116,7 @@ def evaluate_part(model, session, input_data):
     return session.run(model, feed_dict={_x: reshape_music_data([input_data])})
 
 
-def convert_part(part):
+def convert_part_to_sixteenth_notes(part):
     """ convert part to all sixteenth notes """
     converted_part = []
     for note in part:
@@ -170,7 +170,7 @@ def train_model_with_data():
         part = score.parts[0].getElementsByClass(m21.note.Note)
 
         # convert the part entirely to sixteenth notes
-        converted_part = convert_part(part)
+        converted_part = convert_part_to_sixteenth_notes(part)
         if converted_part is False or not converted_part:
             continue  # part had triplets in it, skip
 

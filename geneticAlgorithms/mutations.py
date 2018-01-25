@@ -1,5 +1,13 @@
 """
 Code to alter music21 streams
+
+Includes functions for these musical transformations:
+transpose
+inverse
+retrograde
+inverse-retrograde
+retrograde-inverse
+crossover
 """
 
 import music21 as m21
@@ -37,8 +45,8 @@ def inverse(stream):
 def retrograde(stream, reverse_notes = True, reverse_rhythms=True):
     """ Reverse the notes in the stream """
 
-    pitches = [note.pitch for note in stream.flat.getElementsByClass(m21.note.Note)]
-    rhythms = [note.quarterLength for note in stream.flat.getElementsByClass(m21.note.Note)]
+    pitches = [note.pitch for note in stream.flat.notes]
+    rhythms = [note.quarterLength for note in stream.flat.notes]
 
     if reverse_notes:
         pitches = list(reversed(pitches))
@@ -65,8 +73,9 @@ def inverse_retrograde(stream):
 
 def crossover(parent1, parent2, crossover_points=[]):
     """ """
-    parent1 = parent1.flat.getElementsByClass(m21.note.Note)
-    parent2 = parent2.flat.getElementsByClass(m21.note.Note)
+    crossover_points.sort()
+    parent1 = parent1.flat.notes
+    parent2 = parent2.flat.notes
 
     child1 = []
     child2 = []
