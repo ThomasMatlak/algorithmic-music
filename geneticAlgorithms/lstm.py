@@ -18,7 +18,7 @@ HM_EPOCHS = 5
 N_CLASSES = 2
 BATCH_SIZE = 64
 
-CHUNK_SIZE = 12  # for one hot encoding pitch class
+CHUNK_SIZE = 128  # for one hot encoding pitch value; use 128 for MIDI values, 12 for pitch classes
 N_CHUNKS = 64  # how many 16th notes should be examined at once?
 RNN_SIZE = 128  # how many nodes to pass through
 
@@ -55,6 +55,7 @@ def encode_pitch(pitch_class):
 
     out = [0 for _ in range(CHUNK_SIZE)]
     out[pitch_class] = 1
+
     return out
 
 
@@ -103,16 +104,12 @@ def train_neural_network(x, train_input, train_labels):
         model_accuracy = accuracy.eval({_x: reshape_music_data(train_input[split_point:]), _y: train_labels[split_point:]}, session=sess)
         print('Accuracy:', model_accuracy)
 
-    # print(sess.run(prediction, feed_dict={_x: reshape_music_data([train_input[0]])}), train_labels[0])
-    # print(evaluate_part(prediction, sess, train_input[0]))
-
     return sess, prediction
 
 
 def evaluate_part(model, session, input_data):
-    """ Use the provided `model` to determine how close `input_data` is to the training music -- use for a single imput """
-    
-    # return session.run(model, feed_dict={_x: reshape_music_data(convert_part(input_data))})
+    """ Use the provided `model` to determine how close `input_data` is to the training music. Use for a single imput """
+
     return session.run(model, feed_dict={_x: reshape_music_data([input_data])})
 
 
@@ -126,7 +123,7 @@ def convert_part_to_sixteenth_notes(part):
         note_len = note.quarterLength
         note.quarterLength = 0.25
 
-        converted_part += [note.pitch.pitchClass for i in range(int(note_len / 0.25))]
+        converted_part += [note.pitch.midi for _ in range(int(note_len / 0.25))]
 
     return converted_part
 
@@ -188,7 +185,7 @@ def train_model_with_data():
 
     # Generate an amount of junk data equal to the amount of good data
     for _ in range(len(training_data)):
-        training_data.append([random.randrange(0, 11) for _ in range(N_CHUNKS)])
+        training_data.append([random.randrange(CHUNK_SIZE) for _ in range(N_CHUNKS)])
         training_labels.append([0, 1])
 
     # mix the good and bad data
