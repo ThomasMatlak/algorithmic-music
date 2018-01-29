@@ -39,7 +39,6 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
         os.mkdir("../scoreCache")
 
     for score_title in corpus:
-        # normalized_scores.append(normalize_score(m21.converter.parse(score_title)))
         pattern = re.compile(r"^.*[\/\\]([^\/\\]+\.mid)$")
         savable_file_name = pattern.search(score_title).group(1)
 
@@ -50,15 +49,9 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
             normalized_scores.append(normalize_score(my_score))
             pickle.dump(normalized_scores[-1], open("../scoreCache/" + savable_file_name + ".pickle", "wb"))
 
-    # note_streams = [s[0].getElementsByClass(m21.note.Note) for s in normalized_scores]
-
     note_streams = []
     for s in normalized_scores:
         note_streams.append(s.parts[0].flat.getElementsByClass(m21.note.Note))
-        # if not s.parts['Soprano'] is None:
-        #     note_streams.append(s.parts['Soprano'].flat.getElementsByClass(m21.note.Note))
-
-    # note_streams = [s.parts['Soprano'].flat.getElementsByClass(m21.note.Note) for s in normalized_scores]
 
     interval_markov_chain = MarkovChain(interval_order)
     interval_markov_chain.create_transition_matrix(note_streams, "i")
@@ -74,15 +67,15 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
 
     # seed the melody with the first max(`interval_order`, `rhythm_order`) + 1 notes
     # TODO Allow user to provide their own seed input
+
+    # make generated melodies a bit more random to start
+    starting_rhythms = [0.25, 0.5, 1]
+
     generated_notes = [
-        # m21.note.Note(m21.pitch.Pitch(0, octave=3), quarterLength=0.25),
-        # m21.note.Note(m21.pitch.Pitch(7, octave=3), quarterLength=0.25),
-        # m21.note.Note(m21.pitch.Pitch(4, octave=4), quarterLength=0.25),
-        # m21.note.Note(m21.pitch.Pitch(2, octave=4), quarterLength=0.25)
-        m21.note.Note(m21.pitch.Pitch(0, octave=4), quarterLength=1),
-        m21.note.Note(m21.pitch.Pitch(2, octave=4), quarterLength=1),
-        m21.note.Note(m21.pitch.Pitch(4, octave=4), quarterLength=1),
-        m21.note.Note(m21.pitch.Pitch(2, octave=4), quarterLength=1)
+        m21.note.Note(m21.pitch.Pitch(0, octave=4), quarterLength=random.choice(starting_rhythms)),
+        m21.note.Note(m21.pitch.Pitch(2, octave=4), quarterLength=random.choice(starting_rhythms)),
+        m21.note.Note(m21.pitch.Pitch(4, octave=4), quarterLength=random.choice(starting_rhythms)),
+        m21.note.Note(m21.pitch.Pitch(2, octave=4), quarterLength=random.choice(starting_rhythms))
     ]
 
     count = len(generated_notes)
@@ -176,7 +169,6 @@ def main():
     score_titles = sys.argv[1:]
 
     if not score_titles:
-        # score_titles = m21.corpus.getComposer('bach')[:10]
         score_titles = glob.glob('../corpus/*.mid')
 
     generated_score = generate_melody(score_titles, 3, 2, min_beats, max_beats, beats_per_measure, major)
