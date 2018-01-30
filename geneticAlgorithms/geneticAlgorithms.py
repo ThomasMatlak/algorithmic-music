@@ -7,11 +7,15 @@ import glob
 import random
 import mutations
 import copy
+import os
+import time
+import json
 
 
 POPULATION_SIZE = 10
 MAX_GENERATIONS = 10
-FITNESS_THRESHOLD = 2
+FITNESS_THRESHOLD = 5  # fitness is measured as the difference between the LSTM NN's scores of good and bad
+SAVE_DATA = True
 
 
 def compact_notes(stream):
@@ -53,6 +57,19 @@ def split_notes_into_sixteenth_notes(stream):
 
 
 def main():
+    if SAVE_DATA:
+        # set up a directory to save data to
+        if not os.path.isdir("results"):
+            os.mkdir("results")
+
+        curr_time = str(time.time())
+
+        save_dir = "results/" + curr_time  # the directory for a particular run will be named the current UNIX time, rounded down to the nearest second
+
+        os.mkdir(save_dir)
+
+        results = {"generation": [{"population": []}]}
+
     session, model = lstm.train_model_with_data()
     min_beats = 16
     max_beats = 16
@@ -63,6 +80,7 @@ def main():
 
     population = []
     fitnesses = []
+    generations = 0
 
     # generate an initial population
     while len(fitnesses) < POPULATION_SIZE:
@@ -75,13 +93,19 @@ def main():
 
         population.append(split_notes_into_sixteenth_notes(generated_score.parts[0].flat.notes))
         evaluation = lstm.evaluate_part(model, session, converted_part)[0]
-        fitnesses.append(evaluation[0] - evaluation[1])
+        fitness = evaluation[0] - evaluation[1]
+        fitnesses.append(fitness)
 
         print("Generated initial melody", len(fitnesses))
 
+        if SAVE_DATA:
+            file_name = curr_time + "_0_" + str(len(fitnesses) - 1) + ".mid"
+            generated_score.write("midi", fp=save_dir + "/" + file_name)
+            results["generation"][0]["population"].append({"fitness": str(fitness), "file_name": file_name})
+
     print(fitnesses)
 
-    generations = 1
+    generations += 1
 
     while max(fitnesses) < FITNESS_THRESHOLD and generations < MAX_GENERATIONS:
         print("Generation", generations)
@@ -146,7 +170,19 @@ def main():
 
         print(fitnesses)
 
+        if SAVE_DATA:
+            results["generation"].append({"population": []})
+
+            for idx, melody in enumerate(population):
+                file_name = curr_time + "_" + str(generations) + "_" + str(idx) + ".mid"
+                melody.write("midi", fp=save_dir + "/" + file_name)
+                results["generation"][generations]["population"].append({"fitness": str(fitnesses[idx]), "file_name": file_name})
+
         generations += 1
+
+    if SAVE_DATA:
+        with open(save_dir + "/results.json", "w") as fh:
+            json.dump(results, fh)
 
     # view the entire last generation
     for melody in population:
