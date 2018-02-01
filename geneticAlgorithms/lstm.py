@@ -14,6 +14,8 @@ import tensorflow as tf
 from tensorflow.python.ops import rnn, rnn_cell
 import music21 as m21
 
+DATASET = "builtin"  # options are custom and builtin
+
 HM_EPOCHS = 5
 N_CLASSES = 2
 BATCH_SIZE = 64
@@ -152,19 +154,28 @@ def train_model_with_data():
     if not os.path.isdir("../scoreCache"):
         os.mkdir("../scoreCache")
 
-    for score_title in training_file_names:
-        pattern = re.compile(r"^.*[/\\]([^/\\]+\.mid)$")
-        savable_file_name = pattern.search(score_title).group(1)
+    if DATASET == "custom":
+        for score_title in training_file_names:
+            pattern = re.compile(r"^.*[/\\]([^/\\]+\.mid)$")
+            savable_file_name = pattern.search(score_title).group(1)
 
-        if os.path.isfile("../scoreCache/" + savable_file_name + ".pickle"):
-            normalized_scores.append(pickle.load(open("../scoreCache/" + savable_file_name + ".pickle", "rb")))
-        else:
-            my_score = m21.converter.parse(score_title)
-            normalized_scores.append(normalize_score(my_score))
-            pickle.dump(normalized_scores[-1], open("../scoreCache/" + savable_file_name + ".pickle", "wb"))
+            if os.path.isfile("../scoreCache/" + savable_file_name + ".pickle"):
+                normalized_scores.append(pickle.load(open("../scoreCache/" + savable_file_name + ".pickle", "rb")))
+            else:
+                my_score = m21.converter.parse(score_title)
+                normalized_scores.append(normalize_score(my_score))
+                pickle.dump(normalized_scores[-1], open("../scoreCache/" + savable_file_name + ".pickle", "wb"))
+    else:
+        music = m21.corpus.search(sourcePath='bach', numberOfParts=4)
+        for piece in music:
+            if os.path.isfile("../scoreCache/" + piece.corpusPath + ".pickle"):
+                normalized_scores.append(pickle.load(open("../scoreCache/" + piece.corpusPath + ".pickle", "rb")))
+            else:
+                normalized_scores.append(normalize_score(piece.parse()))
+                pickle.dump(normalized_scores[-1], open("../scoreCache/" + piece.corpusPath + ".pickle", "wb"))
 
     for score in normalized_scores:
-        part = score.parts[0].getElementsByClass(m21.note.Note)
+        part = score.parts[0].flat.getElementsByClass(m21.note.Note)
 
         # convert the part entirely to sixteenth notes
         converted_part = convert_part_to_sixteenth_notes(part)

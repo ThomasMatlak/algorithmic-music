@@ -38,16 +38,26 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
     if not os.path.isdir("../scoreCache"):
         os.mkdir("../scoreCache")
 
-    for score_title in corpus:
-        pattern = re.compile(r"^.*[\/\\]([^\/\\]+\.mid)$")
-        savable_file_name = pattern.search(score_title).group(1)
+    if corpus is not False:
+        for score_title in corpus:
+            pattern = re.compile(r"^.*[\/\\]([^\/\\]+\.mid)$")
+            savable_file_name = pattern.search(score_title).group(1)
 
-        if os.path.isfile("../scoreCache/" + savable_file_name + ".pickle"):
-            normalized_scores.append(pickle.load(open("../scoreCache/" + savable_file_name + ".pickle", "rb")))
-        else:
-            my_score = m21.converter.parse(score_title)
-            normalized_scores.append(normalize_score(my_score))
-            pickle.dump(normalized_scores[-1], open("../scoreCache/" + savable_file_name + ".pickle", "wb"))
+            if os.path.isfile("../scoreCache/" + savable_file_name + ".pickle"):
+                normalized_scores.append(pickle.load(open("../scoreCache/" + savable_file_name + ".pickle", "rb")))
+            else:
+                my_score = m21.converter.parse(score_title)
+                normalized_scores.append(normalize_score(my_score))
+                pickle.dump(normalized_scores[-1], open("../scoreCache/" + savable_file_name + ".pickle", "wb"))
+
+    else:
+        music = m21.corpus.search(sourcePath='bach', numberOfParts=4)
+        for piece in music:
+            if os.path.isfile("../scoreCache/" + piece.corpusPath + ".pickle"):
+                normalized_scores.append(pickle.load(open("../scoreCache/" + piece.corpusPath + ".pickle", "rb")))
+            else:
+                normalized_scores.append(normalize_score(piece.parse()))
+                pickle.dump(normalized_scores[-1], open("../scoreCache/" + piece.corpusPath + ".pickle", "wb"))
 
     note_streams = []
     for s in normalized_scores:
