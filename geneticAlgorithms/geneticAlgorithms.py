@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+import sys
+sys.path.append("../intervalMarkovChain")
 import intervalMarkovChain as markov
 import lstm
 import music21 as m21
@@ -12,10 +14,11 @@ import time
 import json
 
 
-POPULATION_SIZE = 10
-MAX_GENERATIONS = 10
+POPULATION_SIZE = 25
+MAX_GENERATIONS = 50
 FITNESS_THRESHOLD = 5  # fitness is measured as the difference between the LSTM NN's scores of good and bad
 SAVE_DATA = True
+START_WITH_MARKOV = True
 
 
 def compact_notes(stream):
@@ -68,7 +71,7 @@ def main():
 
         os.mkdir(save_dir)
 
-        results = {"generation": [{"population": []}]}
+        results = {"use_markov_to_generate_initial": START_WITH_MARKOV, "generation": [{"population": []}]}
 
     session, model = lstm.train_model_with_data()
     min_beats = 16
@@ -84,11 +87,22 @@ def main():
 
     # generate an initial population
     while len(fitnesses) < POPULATION_SIZE:
-        generated_score = markov.generate_melody(score_titles, random.randint(1, 3), random.randint(1, 3), min_beats, max_beats, beats_per_measure, major)
-        score_cpy = copy.deepcopy(generated_score)
-        converted_part = lstm.convert_part_to_sixteenth_notes(score_cpy.parts[0].notes)
+        if START_WITH_MARKOV:
+            generated_score = markov.generate_melody(score_titles, random.randint(1, 3), random.randint(1, 3), min_beats, max_beats, beats_per_measure, major)
+            score_cpy = copy.deepcopy(generated_score)
+            converted_part = lstm.convert_part_to_sixteenth_notes(score_cpy.parts[0].notes)
+        else:
+            random_part = m21.stream.Part()
 
-        if len(converted_part) != 64:
+            for _ in range(min_beats * 4):
+                random_part.append(m21.note.Note(m21.pitch.Pitch(random.randint(0, 127)), quarterLength=0.25))
+
+            generated_score = m21.stream.Score()
+            generated_score.append(random_part)
+            score_cpy = copy.deepcopy(generated_score)
+            converted_part = lstm.convert_part_to_sixteenth_notes(score_cpy[0].notes)
+
+        if len(converted_part) != min_beats * 4:
             continue
 
         population.append(split_notes_into_sixteenth_notes(generated_score.parts[0].flat.notes))
@@ -103,9 +117,18 @@ def main():
             generated_score.write("midi", fp=save_dir + "/" + file_name)
             results["generation"][0]["population"].append({"fitness": str(fitness), "file_name": file_name})
 
-    print(fitnesses)
+    max_fitness = max(fitnesses)
+    average_fitness = sum(fitnesses) / len(fitnesses)
+    min_fitness = min(fitnesses)
+
+    print(average_fitness, max_fitness, min_fitness)
+
+    if SAVE_DATA:
+        results["generation"][0]["average_fitness"] = str(average_fitness)
 
     generations += 1
+
+    mutation_rate = 0.1
 
     while max(fitnesses) < FITNESS_THRESHOLD and generations < MAX_GENERATIONS:
         print("Generation", generations)
@@ -115,41 +138,40 @@ def main():
 
         for melody in population:
             for i in range(0, 13):
-                new_population.append(mutations.transpose(melody, i))
-            new_population.append(mutations.inverse(melody))
-            new_population.append(mutations.inverse_retrograde(melody))
-            new_population.append(mutations.retrograde_inverse(melody))
-            new_population.append(mutations.retrograde(melody, True, False))
-            new_population.append(mutations.retrograde(melody, False, True))
-            new_population.append(mutations.retrograde(melody, True, True))
+                if random.random() < 0.8:
+                    new_population.append(mutations.transpose(melody, i))
 
-        # perform a random number of crossovers and remix the crossovers
-        for _ in range(random.randrange(10)):
-            parent1 = random.choice(new_population)
-            parent2 = random.choice(new_population)
+            if random.random() < 0.7:
+                new_population.append(mutations.inverse(melody))
+            if random.random() < 0.5:  # inverse-retrograde is causing problems
+                new_population.append(mutations.inverse_retrograde(melody))
+            if random.random() < 0.5:
+                new_population.append(mutations.retrograde_inverse(melody))
+            if random.random() < 0.5:
+                new_population.append(mutations.retrograde(melody, True, True))
+            if random.random() < 0.5:
+                new_population.append(mutations.retrograde(melody, True, False))
+            if random.random() < 0.5:
+                new_population.append(mutations.retrograde(melody, False, True))
 
-            for _ in range(random.randrange(10)):
-                child1, child2 = mutations.crossover(parent1, parent2, [random.randrange(2, 62) for _ in range(random.randrange(4))])
+        # some crossover
+        for _ in range(random.randint(0, int(POPULATION_SIZE / 4.0))):
+            # pick the parents
+            parent1_idx = int(random.triangular(0, POPULATION_SIZE, 0))
+            parent2_idx = int(random.triangular(0, POPULATION_SIZE, 0))
 
-                for i in range(0, 13):
-                    new_population.append(mutations.transpose(child1, i))
-                new_population.append(mutations.inverse(child1))
-                new_population.append(mutations.inverse_retrograde(child1))
-                new_population.append(mutations.retrograde_inverse(child1))
-                new_population.append(mutations.retrograde(child1, True, False))
-                new_population.append(mutations.retrograde(child1, False, True))
-                new_population.append(mutations.retrograde(child1, True, True))
+            # choose a random number of crossover points
+            child1, child2 = mutations.crossover(population[parent1_idx], population[parent2_idx], [int(random.triangular(2, 62)) for _ in range(int(random.triangular(0, 6)))])
+            new_population.append(child1)
+            new_population.append(child2)
 
-                for i in range(0, 13):
-                    new_population.append(mutations.transpose(child2, i))
-                new_population.append(mutations.inverse(child2))
-                new_population.append(mutations.inverse_retrograde(child2))
-                new_population.append(mutations.retrograde_inverse(child2))
-                new_population.append(mutations.retrograde(child2, True, False))
-                new_population.append(mutations.retrograde(child2, False, True))
-                new_population.append(mutations.retrograde(child2, True, True))
+        # mutate some stuff
+        for melody in new_population:
+            # pick the indices to mutate
+            mutate_indices = [random.randint(0, 63) for _ in range(int(random.triangular(0, 20, mutation_rate * 64)))]
 
-        # Introduce some random changes
+            for idx in mutate_indices:
+                melody[idx].pitch.midi += random.randint(-5, 5)
 
         # evaluate the new population's fitness
         new_fitnesses = []
@@ -160,23 +182,52 @@ def main():
             evaluation = lstm.evaluate_part(model, session, converted_part)[0]
             new_fitnesses.append(evaluation[0] - evaluation[1])
 
-        # take the top 10 melodies to reproduce
-        zipped_data = list(zip(new_fitnesses, new_population))
+        # zipped_data = list(zip(new_fitnesses, new_population))
+        # random.shuffle(zipped_data)
+        # new_fitnesses, new_population = zip(*zipped_data)
+
+        # maintain genetic diversity by randomly choosing which melodies to include, weighted toward the fitter melodies
+        # fitnesses = []
+        # population = []
+        #
+        # idx = 0
+        # while len(fitnesses) < POPULATION_SIZE:
+        #     rand_num = random.triangular(-5, 5, 3)
+        #     if new_fitnesses[idx] > rand_num:
+        #         fitnesses.append(new_fitnesses[idx])
+        #         population.append(new_population[idx])
+        #
+        #     idx += 1
+        #
+        #     if len(fitnesses) - (idx - 1) + len(new_fitnesses) == POPULATION_SIZE:
+        #         fitnesses += new_fitnesses[idx:]
+        #         population += new_population[idx:]
+
+        fitnesses = new_fitnesses
+        population = new_population
+
+        zipped_data = list(zip(fitnesses, population))
+        # random.shuffle(zipped_data)
         zipped_data.sort(key=lambda x: x[0], reverse=True)
-        new_fitnesses, new_population = zip(*zipped_data)
+        fitnesses, population = zip(*zipped_data)
 
-        fitnesses = new_fitnesses[:POPULATION_SIZE]
-        population = new_population[:POPULATION_SIZE]
+        fitnesses = fitnesses[:POPULATION_SIZE]
+        population = population[:POPULATION_SIZE]
 
-        print(fitnesses)
+        max_fitness = max(fitnesses)
+        average_fitness = sum(fitnesses) / len(fitnesses)
+        min_fitness = min(fitnesses)
+
+        print(average_fitness, max_fitness, min_fitness)
 
         if SAVE_DATA:
             results["generation"].append({"population": []})
 
             for idx, melody in enumerate(population):
                 file_name = curr_time + "_" + str(generations) + "_" + str(idx) + ".mid"
-                melody.write("midi", fp=save_dir + "/" + file_name)
+                compact_notes(melody).write("midi", fp=save_dir + "/" + file_name)
                 results["generation"][generations]["population"].append({"fitness": str(fitnesses[idx]), "file_name": file_name})
+                results["generation"][generations]["average_fitness"] = str(average_fitness)
 
         generations += 1
 
@@ -185,8 +236,8 @@ def main():
             json.dump(results, fh)
 
     # view the entire last generation
-    for melody in population:
-        compact_notes(melody).show()
+    # for melody in population:
+    #     compact_notes(melody).show()
 
 
 if __name__ == '__main__':
