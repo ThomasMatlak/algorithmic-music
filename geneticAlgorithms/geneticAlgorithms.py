@@ -18,7 +18,7 @@ from queue import Queue, Empty, deque
 
 POPULATION_SIZE = 25
 MAX_GENERATIONS = 50
-FITNESS_THRESHOLD = 5  # fitness is measured as the difference between the LSTM NN's scores of good and bad
+FITNESS_THRESHOLD = 20  # fitness is measured as the difference between the LSTM NN's scores of good and bad
 SAVE_DATA = True
 START_WITH_MARKOV = False
 

@@ -22,7 +22,7 @@ BATCH_SIZE = 64
 
 CHUNK_SIZE = 128  # for one hot encoding pitch value; use 128 for MIDI values, 12 for pitch classes
 N_CHUNKS = 64  # how many 16th notes should be examined at once?
-RNN_SIZE = 128  # how many nodes to pass through
+RNN_SIZE = 256  # how many nodes to pass through
 
 _x = tf.placeholder('float', [None, N_CHUNKS, CHUNK_SIZE])
 _y = tf.placeholder(tf.float32, [None, 2])
