@@ -12,13 +12,47 @@ import copy
 import os
 import time
 import json
+from threading import Thread
+from queue import Queue, Empty, deque
 
 
 POPULATION_SIZE = 25
 MAX_GENERATIONS = 50
 FITNESS_THRESHOLD = 5  # fitness is measured as the difference between the LSTM NN's scores of good and bad
 SAVE_DATA = True
-START_WITH_MARKOV = True
+START_WITH_MARKOV = False
+
+
+class MutationThread(Thread):
+    def __init__(self, thread_id, population, new_population):
+        Thread.__init__(self)
+        self.id = thread_id
+        self.population = population
+        self.new_population = new_population
+
+    def run(self):
+        while True:
+            try:
+                melody = self.population.get(timeout=0.5)
+
+                for i in range(0, 13):
+                    if random.random() < 0.9:
+                        self.new_population.put(mutations.transpose(melody, i))
+
+                if random.random() < 0.7:
+                    self.new_population.put(mutations.inverse(melody))
+                if random.random() < 0.5:
+                    self.new_population.put(mutations.inverse_retrograde(melody))
+                if random.random() < 0.5:
+                    self.new_population.put(mutations.retrograde_inverse(melody))
+                if random.random() < 0.5:
+                    self.new_population.put(mutations.retrograde(melody, True, True))
+                if random.random() < 0.5:
+                    self.new_population.put(mutations.retrograde(melody, True, False))
+                if random.random() < 0.5:
+                    self.new_population.put(mutations.retrograde(melody, False, True))
+            except Empty:
+                break
 
 
 def compact_notes(stream):
@@ -60,6 +94,21 @@ def split_notes_into_sixteenth_notes(stream):
 
 
 def main():
+    global FITNESS_THRESHOLD, POPULATION_SIZE, MAX_GENERATIONS, START_WITH_MARKOV
+
+    for i in range(len(sys.argv)):
+        if sys.argv[i] == '-f' or sys.argv[i] == '--desired-fitness':
+            FITNESS_THRESHOLD = int(sys.argv[i + 1])
+            i += 1
+        elif sys.argv[i] == '-s' or sys.argv[i] == '--population-size':
+            POPULATION_SIZE = int(sys.argv[i + 1])
+            i += 1
+        elif sys.argv[i] == '-g' or sys.argv[i] == '--max-generations':
+            MAX_GENERATIONS = int(sys.argv[i + 1])
+            i += 1
+        elif sys.argv == '-m':
+            START_WITH_MARKOV = True
+
     if SAVE_DATA:
         # set up a directory to save data to
         if not os.path.isdir("results"):
@@ -81,12 +130,12 @@ def main():
 
     score_titles = glob.glob('../corpus/*.mid')
 
-    population = []
-    fitnesses = []
+    population = Queue()
+    fitnesses = Queue()
     generations = 0
 
     # generate an initial population
-    while len(fitnesses) < POPULATION_SIZE:
+    while fitnesses.qsize() < POPULATION_SIZE:
         if START_WITH_MARKOV:
             generated_score = markov.generate_melody(score_titles, random.randint(1, 3), random.randint(1, 3), min_beats, max_beats, beats_per_measure, major)
             score_cpy = copy.deepcopy(generated_score)
@@ -105,21 +154,21 @@ def main():
         if len(converted_part) != min_beats * 4:
             continue
 
-        population.append(split_notes_into_sixteenth_notes(generated_score.parts[0].flat.notes))
+        population.put(split_notes_into_sixteenth_notes(generated_score.parts[0].flat.notes))
         evaluation = lstm.evaluate_part(model, session, converted_part)[0]
         fitness = evaluation[0] - evaluation[1]
-        fitnesses.append(fitness)
+        fitnesses.put(fitness)
 
-        print("Generated initial melody", len(fitnesses))
+        print("Generated initial melody", fitnesses.qsize())
 
         if SAVE_DATA:
-            file_name = curr_time + "_0_" + str(len(fitnesses) - 1) + ".mid"
+            file_name = curr_time + "_0_" + str(fitnesses.qsize() - 1) + ".mid"
             generated_score.write("midi", fp=save_dir + "/" + file_name)
             results["generation"][0]["population"].append({"fitness": str(fitness), "file_name": file_name})
 
-    max_fitness = max(fitnesses)
-    average_fitness = sum(fitnesses) / len(fitnesses)
-    min_fitness = min(fitnesses)
+    max_fitness = max(list(fitnesses.queue))
+    average_fitness = sum(list(fitnesses.queue)) / fitnesses.qsize()
+    min_fitness = min(list(fitnesses.queue))
 
     print(average_fitness, max_fitness, min_fitness)
 
@@ -128,31 +177,25 @@ def main():
 
     generations += 1
 
-    mutation_rate = 0.1
+    mutation_rate = 0.05
 
-    while max(fitnesses) < FITNESS_THRESHOLD and generations < MAX_GENERATIONS:
+    while max_fitness < FITNESS_THRESHOLD and generations < MAX_GENERATIONS:
         print("Generation", generations)
+        population_cpy = copy.deepcopy(population.queue)
+
 
         # remix the melodies to create new ones
-        new_population = []
+        new_population = Queue()
 
-        for melody in population:
-            for i in range(0, 13):
-                if random.random() < 0.8:
-                    new_population.append(mutations.transpose(melody, i))
+        threads = []
 
-            if random.random() < 0.7:
-                new_population.append(mutations.inverse(melody))
-            if random.random() < 0.5:  # inverse-retrograde is causing problems
-                new_population.append(mutations.inverse_retrograde(melody))
-            if random.random() < 0.5:
-                new_population.append(mutations.retrograde_inverse(melody))
-            if random.random() < 0.5:
-                new_population.append(mutations.retrograde(melody, True, True))
-            if random.random() < 0.5:
-                new_population.append(mutations.retrograde(melody, True, False))
-            if random.random() < 0.5:
-                new_population.append(mutations.retrograde(melody, False, True))
+        for i in range(4):
+            thread = MutationThread(i, population, new_population)
+            thread.start()
+            threads.append(thread)
+
+        for thread in threads:
+            thread.join()
 
         # some crossover
         for _ in range(random.randint(0, int(POPULATION_SIZE / 4.0))):
@@ -161,26 +204,26 @@ def main():
             parent2_idx = int(random.triangular(0, POPULATION_SIZE, 0))
 
             # choose a random number of crossover points
-            child1, child2 = mutations.crossover(population[parent1_idx], population[parent2_idx], [int(random.triangular(2, 62)) for _ in range(int(random.triangular(0, 6)))])
-            new_population.append(child1)
-            new_population.append(child2)
+            child1, child2 = mutations.crossover(population_cpy[parent1_idx], population_cpy[parent2_idx], [int(random.triangular(2, 62)) for _ in range(int(random.triangular(0, 6)))])
+            new_population.put(child1)
+            new_population.put(child2)
 
         # mutate some stuff
-        for melody in new_population:
+        for melody in new_population.queue:
             # pick the indices to mutate
-            mutate_indices = [random.randint(0, 63) for _ in range(int(random.triangular(0, 20, mutation_rate * 64)))]
+            mutate_indices = [random.randint(0, 63) for _ in range(int(random.triangular(0, 20, mutation_rate * 64)))]  # TODO change mutation rate over time
 
             for idx in mutate_indices:
                 melody[idx].pitch.midi += random.randint(-5, 5)
 
         # evaluate the new population's fitness
-        new_fitnesses = []
+        new_fitnesses = Queue()
 
-        for new_melody in new_population:
+        for new_melody in new_population.queue:
             new_melody_cpy = copy.deepcopy(new_melody)
             converted_part = lstm.convert_part_to_sixteenth_notes(new_melody_cpy.flat.notes)
             evaluation = lstm.evaluate_part(model, session, converted_part)[0]
-            new_fitnesses.append(evaluation[0] - evaluation[1])
+            new_fitnesses.put(evaluation[0] - evaluation[1])
 
         # zipped_data = list(zip(new_fitnesses, new_population))
         # random.shuffle(zipped_data)
@@ -203,30 +246,32 @@ def main():
         #         fitnesses += new_fitnesses[idx:]
         #         population += new_population[idx:]
 
-        fitnesses = new_fitnesses
-        population = new_population
+        # fitnesses = new_fitnesses
+        # population = new_population
 
-        zipped_data = list(zip(fitnesses, population))
-        # random.shuffle(zipped_data)
+        zipped_data = list(zip(new_fitnesses.queue, new_population.queue))
         zipped_data.sort(key=lambda x: x[0], reverse=True)
-        fitnesses, population = zip(*zipped_data)
+        newer_fitnesses, newer_population = list(zip(*zipped_data))
 
-        fitnesses = fitnesses[:POPULATION_SIZE]
-        population = population[:POPULATION_SIZE]
+        new_fitnesses.queue = deque(newer_fitnesses)
+        new_population.queue = deque(newer_population)
 
-        max_fitness = max(fitnesses)
-        average_fitness = sum(fitnesses) / len(fitnesses)
-        min_fitness = min(fitnesses)
+        fitnesses.queue = deque(list(new_fitnesses.queue)[:POPULATION_SIZE])
+        population.queue = deque(list(new_population.queue)[:POPULATION_SIZE])
+
+        max_fitness = max(list(fitnesses.queue))
+        average_fitness = sum(list(fitnesses.queue)) / fitnesses.qsize()
+        min_fitness = min(list(fitnesses.queue))
 
         print(average_fitness, max_fitness, min_fitness)
 
         if SAVE_DATA:
             results["generation"].append({"population": []})
 
-            for idx, melody in enumerate(population):
+            for idx, melody in enumerate(list(population.queue)):
                 file_name = curr_time + "_" + str(generations) + "_" + str(idx) + ".mid"
                 compact_notes(melody).write("midi", fp=save_dir + "/" + file_name)
-                results["generation"][generations]["population"].append({"fitness": str(fitnesses[idx]), "file_name": file_name})
+                results["generation"][generations]["population"].append({"fitness": str(fitnesses.queue[idx]), "file_name": file_name})
                 results["generation"][generations]["average_fitness"] = str(average_fitness)
 
         generations += 1
