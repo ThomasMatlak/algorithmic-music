@@ -58,24 +58,45 @@ class RemixThread(Thread):
 
 
 def remix_worker(melody):
-    new_population = []
+    new_population = [copy.deepcopy(melody)]  # guarantee the population will not regress
 
-    for i in range(0, 13):
+    for i in range(1, 13):
         if random.random() < 0.9:
-            new_population.append(mutations.transpose(melody, i))
+            try:
+                new_population.append(mutations.transpose(melody, i))
+            except m21.interval.IntervalException:
+                pass
 
     if random.random() < 0.7:
-        new_population.append(mutations.inverse(melody))
+        try:
+            new_population.append(mutations.inverse(melody))
+        except m21.interval.IntervalException:
+            pass
     if random.random() < 0.5:
-        new_population.append(mutations.inverse_retrograde(melody))
+        try:
+            new_population.append(mutations.inverse_retrograde(melody))
+        except m21.interval.IntervalException:
+            pass
     if random.random() < 0.5:
-        new_population.append(mutations.retrograde_inverse(melody))
+        try:
+            new_population.append(mutations.retrograde_inverse(melody))
+        except m21.interval.IntervalException:
+            pass
     if random.random() < 0.5:
-        new_population.append(mutations.retrograde(melody, True, True))
+        try:
+            new_population.append(mutations.retrograde(melody, True, True))
+        except m21.interval.IntervalException:
+            pass
     if random.random() < 0.5:
-        new_population.append(mutations.retrograde(melody, True, False))
+        try:
+            new_population.append(mutations.retrograde(melody, True, False))
+        except m21.interval.IntervalException:
+            pass
     if random.random() < 0.5:
-        new_population.append(mutations.retrograde(melody, False, True))
+        try:
+            new_population.append(mutations.retrograde(melody, False, True))
+        except m21.interval.IntervalException:
+            pass
 
     return new_population
 
@@ -164,6 +185,8 @@ def main():
 
     generations = 0
 
+    pool = mp.Pool(processes=8)
+
     # generate an initial population
     while len(fitnesses) < POPULATION_SIZE:
         if START_WITH_MARKOV:
@@ -238,14 +261,11 @@ def main():
         #     new_population.append(new_population_q.get())
 
         ### USING PROCESSES ###
-        pool = mp.Pool(processes=8)
         remixed_melodies = pool.map(remix_worker, population)
 
         new_population = []
         for r in remixed_melodies:
             new_population += r
-
-        pool.close()
 
         end = time.time()
         print("Time to remix:", end - start)
@@ -258,9 +278,14 @@ def main():
             parent2_idx = int(random.triangular(0, POPULATION_SIZE, 0))
 
             # choose a random number of crossover points
-            child1, child2 = mutations.crossover(population[parent1_idx], population[parent2_idx], [int(random.triangular(2, 62)) for _ in range(int(random.triangular(0, 6)))])
-            new_population.append(child1)
-            new_population.append(child2)
+            try:
+                child1, child2 = mutations.crossover(population[parent1_idx], population[parent2_idx], [int(random.triangular(2, 62)) for _ in range(int(random.triangular(0, 6)))])
+
+                new_population.append(child1)
+                new_population.append(child2)
+            except KeyError:
+                print(parent1_idx, parent2_idx)
+                print(population)
 
         end = time.time()
         print("Time to crossover:", end - start)
@@ -270,10 +295,14 @@ def main():
 
         for melody in new_population:
             # pick the indices to mutate
-            mutate_indices = [random.randint(0, 63) for _ in range(int(random.triangular(0, 20, mutation_rate * 64)))]  # TODO change mutation rate over time
+            mutate_indices = [random.randint(0, 63) for _ in range(int(random.triangular(0, 20, mutation_rate * 64)))]
 
             for idx in mutate_indices:
-                melody[idx].pitch.midi += random.randint(-5, 5)
+                try:
+                    melody[idx].pitch.midi += random.randint(-5, 5)
+                except KeyError:
+                    print(idx)
+                    print(melody)
 
         end = time.time()
         print("Time to mutate:", end - start)
@@ -320,7 +349,14 @@ def main():
         population = sorted_population[:POPULATION_SIZE]
 
         max_fitness = max(list(fitnesses))
-        average_fitness = sum(list(fitnesses)) / len(fitnesses)
+        new_average_fitness = sum(list(fitnesses)) / len(fitnesses)
+        # if fitness is stagnating, increase mutation rate
+        fitness_diff = abs(new_average_fitness - average_fitness)
+        if fitness_diff < 0.1 and mutation_rate < 0.5:
+            mutation_rate *= 2
+        elif fitness_diff > 0.5 and mutation_rate > 0.01:
+            mutation_rate /= 2
+        average_fitness = new_average_fitness
         min_fitness = min(list(fitnesses))
 
         if SAVE_DATA:
@@ -338,6 +374,8 @@ def main():
         print("Time to run the generation:", generation_end - generation_begin)
 
         print(average_fitness, max_fitness, min_fitness)
+
+    pool.close()  # end the worker processes
 
     if SAVE_DATA:
         with open(save_dir + "/results.json", "w") as fh:
