@@ -7,6 +7,7 @@ Code to create and use an LSTM network to evaluate music
 import glob
 import pickle
 import random
+import math
 import re
 import os
 import numpy
@@ -14,7 +15,7 @@ import tensorflow as tf
 from tensorflow.python.ops import rnn, rnn_cell
 import music21 as m21
 
-DATASET = "builtin"  # options are custom and builtin
+DATASET = "custom"  # options are custom and builtin
 
 HM_EPOCHS = 5
 N_CLASSES = 2
@@ -112,7 +113,8 @@ def train_neural_network(x, train_input, train_labels):
 def evaluate_part(model, session, input_data):
     """ Use the provided `model` to determine how close `input_data` is to the training music. Use for a single imput """
 
-    return session.run(model, feed_dict={_x: reshape_music_data([input_data])})
+    evaluation = session.run(model, feed_dict={_x: reshape_music_data([input_data])})[0]
+    return (math.atan((evaluation[0] - evaluation[1]) / 5) + (math.pi / 2)) / math.pi
 
 
 def convert_part_to_sixteenth_notes(part):
@@ -120,12 +122,16 @@ def convert_part_to_sixteenth_notes(part):
     converted_part = []
     for note in part:
         if note.quarterLength / 0.25 - int(note.quarterLength / 0.25) != 0:
-            return False  # TODO be able to handle triplets
+            continue
+            # return False  # TODO be able to handle triplets
 
         note_len = note.quarterLength
         note.quarterLength = 0.25
 
-        converted_part += [note.pitch.midi for _ in range(int(note_len / 0.25))]
+        if isinstance(note, m21.chord.Chord):  # use only the top note from a Chord
+            converted_part += [note[0].pitch.midi for _ in range(int(note_len / 0.25))]
+        else:
+            converted_part += [note.pitch.midi for _ in range(int(note_len / 0.25))]
 
     return converted_part
 
@@ -209,6 +215,21 @@ def train_model_with_data():
 
 def main():
     session, trained_model = train_model_with_data()
+
+    # Test some music by different composers
+    pieces_to_test = [
+        '../corpus/suite_for_unaccompanied_cello_bwv-1007_1_(c)grossman.mid',
+        '../corpus/Tune-87234.mid',
+        '../nonBach/haydn_sonata_for_violin_1_(c)harfesoft.mid',
+    ]
+
+    for piece in pieces_to_test:
+        score = normalize_score(m21.converter.parse(piece))
+
+        print(piece, evaluate_part(trained_model, session, convert_part_to_sixteenth_notes(score.parts[0].flat.notes)[:64]))
+
+    score = normalize_score(m21.converter.parse('../nonBach/scarlatti-d_esserciso_3_(c)icking-archive.mid'))
+    print('../nonBach/scarlatti-d_esserciso_3_(c)icking-archive.mid', evaluate_part(trained_model, session, convert_part_to_sixteenth_notes(score.parts[0].flat.notes)[:64]))
 
     # Save the model for later use
     saver = tf.train.Saver()

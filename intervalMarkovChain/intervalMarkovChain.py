@@ -31,7 +31,7 @@ def normalize_score(score):
     return score.transpose(i)
 
 
-def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, beats_per_measure, major=True):
+def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, beats_per_measure, major=True, provide_interval_markov_chain=False, provide_rhythm_markov_chain=False):
     """ """
     normalized_scores = []
 
@@ -63,11 +63,17 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
     for s in normalized_scores:
         note_streams.append(s.parts[0].flat.getElementsByClass(m21.note.Note))
 
-    interval_markov_chain = MarkovChain(interval_order)
-    interval_markov_chain.create_transition_matrix(note_streams, "i")
+    if not provide_interval_markov_chain:
+        interval_markov_chain = MarkovChain(interval_order)
+        interval_markov_chain.create_transition_matrix(note_streams, "i")
+    else:
+        interval_markov_chain = provide_interval_markov_chain
 
-    rhythm_markov_chain = MarkovChain(rhythm_order)
-    rhythm_markov_chain.create_transition_matrix(note_streams, "r")
+    if not provide_rhythm_markov_chain:
+        rhythm_markov_chain = MarkovChain(rhythm_order)
+        rhythm_markov_chain.create_transition_matrix(note_streams, "r")
+    else:
+        rhythm_markov_chain = provide_rhythm_markov_chain
 
     # Set up the score
     generated_score = m21.stream.Score()
@@ -167,7 +173,14 @@ def generate_melody(corpus, interval_order, rhythm_order, min_beats, max_beats, 
 
     generated_score.append(part)
 
-    return generated_score
+    if not provide_interval_markov_chain and not provide_rhythm_markov_chain:
+        return generated_score, interval_markov_chain, rhythm_markov_chain
+    elif not provide_interval_markov_chain:
+        return generated_score, interval_markov_chain
+    elif not provide_rhythm_markov_chain:
+        return generated_score, rhythm_markov_chain
+    else:
+        return generated_score
 
 
 def main():
@@ -182,7 +195,7 @@ def main():
         score_titles = glob.glob('../corpus/*.mid')
 
     generated_score = generate_melody(score_titles, 3, 2, min_beats, max_beats, beats_per_measure, major)
-    generated_score.show()
+    generated_score[0].show()
 
 
 if __name__ == '__main__':

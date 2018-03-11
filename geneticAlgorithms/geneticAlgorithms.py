@@ -144,7 +144,7 @@ def main():
 
     for i in range(len(sys.argv)):
         if sys.argv[i] == '-f' or sys.argv[i] == '--desired-fitness':
-            FITNESS_THRESHOLD = int(sys.argv[i + 1])
+            FITNESS_THRESHOLD = float(sys.argv[i + 1])
             i += 1
         elif sys.argv[i] == '-s' or sys.argv[i] == '--population-size':
             POPULATION_SIZE = int(sys.argv[i + 1])
@@ -180,6 +180,10 @@ def main():
 
     score_titles = glob.glob('../corpus/*.mid')
 
+    if START_WITH_MARKOV:
+        interval_markov_chains = {}
+        rhythm_markov_chains = {}
+
     fitnesses = []
     population = []
 
@@ -190,7 +194,25 @@ def main():
     # generate an initial population
     while len(fitnesses) < POPULATION_SIZE:
         if START_WITH_MARKOV:
-            generated_score = markov.generate_melody(score_titles, random.randint(1, 3), random.randint(1, 3), min_beats, max_beats, beats_per_measure, major)
+            interval_order = random.randint(1, 3)
+            rhythm_order = random.randint(1, 3)
+
+            interval_markov_chain, rhythm_markov_chain = False
+
+            if interval_order not in interval_markov_chains.keys():
+                interval_markov_chains[interval_order] = {}
+            else:
+                interval_markov_chain = interval_markov_chains[interval_order]
+
+            if rhythm_order not in rhythm_markov_chains.keys():
+                rhythm_markov_chains[rhythm_order] = {}
+            else:
+                rhythm_markov_chain = rhythm_markov_chains[rhythm_order]
+
+            # if not interval_markov_chain and not rhythm_markov_chain:
+            #     generated_score, interval_markov_chain, rhythm_markov_chain =
+
+            generated_score = markov.generate_melody(score_titles, interval_order, rhythm_order, min_beats, max_beats, beats_per_measure, major, interval_markov_chain, rhythm_markov_chain)
             score_cpy = copy.deepcopy(generated_score)
             converted_part = lstm.convert_part_to_sixteenth_notes(score_cpy.parts[0].notes)
         else:
@@ -208,8 +230,7 @@ def main():
             continue
 
         population.append(split_notes_into_sixteenth_notes(generated_score.parts[0].flat.notes))
-        evaluation = lstm.evaluate_part(model, session, converted_part)[0]
-        fitness = evaluation[0] - evaluation[1]
+        fitness = lstm.evaluate_part(model, session, converted_part)
         fitnesses.append(fitness)
 
         print("Generated initial melody", len(fitnesses))
@@ -239,28 +260,6 @@ def main():
         # remix the melodies to create new ones
         start = time.time()
 
-        ###  USING THREADS ###
-        # population_q = queue.Queue()
-        # new_population_q = queue.Queue()
-        #
-        # for p in population:
-        #     population_q.put(p)
-        #
-        # threads = []
-        #
-        # for _ in range(4):
-        #     thread = RemixThread(population_q, new_population_q)
-        #     thread.start()
-        #     threads.append(thread)
-        #
-        # for thread in threads:
-        #     thread.join()
-        #
-        # new_population = []
-        # while not new_population_q.empty():
-        #     new_population.append(new_population_q.get())
-
-        ### USING PROCESSES ###
         remixed_melodies = pool.map(remix_worker, population)
 
         new_population = []
@@ -284,13 +283,13 @@ def main():
                 new_population.append(child1)
                 new_population.append(child2)
             except KeyError:
-                print(parent1_idx, parent2_idx)
-                print(population)
+                continue
 
         end = time.time()
         print("Time to crossover:", end - start)
 
         # mutate some stuff
+        print("Mutation Rate:", mutation_rate)
         start = time.time()
 
         for melody in new_population:
@@ -301,8 +300,7 @@ def main():
                 try:
                     melody[idx].pitch.midi += random.randint(-5, 5)
                 except KeyError:
-                    print(idx)
-                    print(melody)
+                    continue
 
         end = time.time()
         print("Time to mutate:", end - start)
@@ -314,8 +312,7 @@ def main():
         for new_melody in new_population:
             new_melody_cpy = copy.deepcopy(new_melody)
             converted_part = lstm.convert_part_to_sixteenth_notes(new_melody_cpy.flat.notes)
-            evaluation = lstm.evaluate_part(model, session, converted_part)[0]
-            new_fitnesses.append(evaluation[0] - evaluation[1])
+            new_fitnesses.append(lstm.evaluate_part(model, session, converted_part))
 
         end = time.time()
         print("Time to evaluate fitnesses:", end - start)
@@ -352,9 +349,9 @@ def main():
         new_average_fitness = sum(list(fitnesses)) / len(fitnesses)
         # if fitness is stagnating, increase mutation rate
         fitness_diff = abs(new_average_fitness - average_fitness)
-        if fitness_diff < 0.1 and mutation_rate < 0.5:
+        if fitness_diff < 0.1 and mutation_rate <= 0.05:
             mutation_rate *= 2
-        elif fitness_diff > 0.5 and mutation_rate > 0.01:
+        elif fitness_diff > 0.15 and mutation_rate >= 0.01:
             mutation_rate /= 2
         average_fitness = new_average_fitness
         min_fitness = min(list(fitnesses))
@@ -364,9 +361,13 @@ def main():
 
             for idx, melody in enumerate(sorted_population[:POPULATION_SIZE]):
                 file_name = curr_time + "_" + str(generations) + "_" + str(idx) + ".mid"
-                compact_notes(melody).write("midi", fp=save_dir + "/" + file_name)
+                try:
+                    compact_notes(melody).write("midi", fp=save_dir + "/" + file_name)
+                except KeyError:
+                    melody.write("midi", fp=save_dir + "/" + file_name)
                 results["generation"][generations]["population"].append({"fitness": str(fitnesses[idx]), "file_name": file_name})
                 results["generation"][generations]["average_fitness"] = str(average_fitness)
+                results["generation"][generations]["mutation_rate"] = mutation_rate
 
         generations += 1
 
