@@ -14,12 +14,12 @@ import music21 as m21
 
 
 def transpose(stream, interval=0):
-    """ Transpose the stream by the specified interval """
+    """ Transpose the Stream by the specified interval """
     return stream.transpose(interval)
 
 
 def inverse(stream):
-    """ Reverse the intervals of the stream """
+    """ Reverse the intervals of the Stream """
 
     notes = stream.flat.getElementsByClass(m21.note.Note)
     rhythms = [note.quarterLength for note in notes]
@@ -43,7 +43,7 @@ def inverse(stream):
 
 
 def retrograde(stream, reverse_notes = True, reverse_rhythms=True):
-    """ Reverse the notes in the stream """
+    """ Reverse the notes in the Stream """
 
     pitches = [note.pitch for note in stream.flat.notes]
     rhythms = [note.quarterLength for note in stream.flat.notes]
@@ -72,7 +72,7 @@ def inverse_retrograde(stream):
 
 
 def crossover(parent1, parent2, crossover_points=[]):
-    """ """
+    """ Perform the GA operation crossover on two Streams """
     crossover_points.sort()
     parent1 = parent1.flat.notes
     parent2 = parent2.flat.notes

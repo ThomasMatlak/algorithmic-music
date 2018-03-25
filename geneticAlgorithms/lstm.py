@@ -45,19 +45,14 @@ def recurrent_neural_network(x):
     return output
 
 
-def encode_pitch(pitch_class):
-    """ One hot encode pitch classes
+def encode_pitch(midi_value):
+    """ One hot encode MIDI values
 
-        C encodes to [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        C# encodes to [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        and so on
-
-        pitch_class should be an integer between 0 and 11 (inclusive),
-        with C corresponding to 0, C# to 1, ..., B to 11
+        midi_value should be an integer between 0 and 127 (inclusive)
     """
 
     out = [0 for _ in range(CHUNK_SIZE)]
-    out[pitch_class] = 1
+    out[midi_value] = 1
 
     return out
 
@@ -71,9 +66,6 @@ def reshape_music_data(input_data):
 
 
 def train_neural_network(x, train_input, train_labels):
-    """
-
-    """
     prediction = recurrent_neural_network(x)
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=_y))
     optimizer = tf.train.AdamOptimizer().minimize(cost)

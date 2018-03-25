@@ -12,9 +12,7 @@ import copy
 import os
 import time
 import json
-from threading import Thread
 import multiprocess as mp
-import queue
 
 
 POPULATION_SIZE = 25
@@ -22,39 +20,6 @@ MAX_GENERATIONS = 50
 FITNESS_THRESHOLD = 20  # fitness is measured as the difference between the LSTM NN's scores of good and bad
 SAVE_DATA = True
 START_WITH_MARKOV = False
-
-
-class RemixThread(Thread):
-    def __init__(self, population, new_population):
-        Thread.__init__(self)
-        self.population = population
-        self.new_population = new_population
-
-    def run(self):
-        while True:
-            try:
-                if self.population.qsize() == 0:
-                    break
-                melody = self.population.get()
-
-                for i in range(0, 13):
-                    if random.random() < 0.9:
-                        self.new_population.put(mutations.transpose(melody, i))
-
-                if random.random() < 0.7:
-                    self.new_population.put(mutations.inverse(melody))
-                if random.random() < 0.5:
-                    self.new_population.put(mutations.inverse_retrograde(melody))
-                if random.random() < 0.5:
-                    self.new_population.put(mutations.retrograde_inverse(melody))
-                if random.random() < 0.5:
-                    self.new_population.put(mutations.retrograde(melody, True, True))
-                if random.random() < 0.5:
-                    self.new_population.put(mutations.retrograde(melody, True, False))
-                if random.random() < 0.5:
-                    self.new_population.put(mutations.retrograde(melody, False, True))
-            except queue.Empty:
-                break
 
 
 def remix_worker(melody):
@@ -199,6 +164,7 @@ def main():
 
             interval_markov_chain, rhythm_markov_chain = False
 
+            # save the Markov chains as they are created to not create them for every new melody
             if interval_order not in interval_markov_chains.keys():
                 interval_markov_chains[interval_order] = {}
             else:
@@ -317,27 +283,7 @@ def main():
         end = time.time()
         print("Time to evaluate fitnesses:", end - start)
 
-        # zipped_data = list(zip(new_fitnesses, new_population))
-        # random.shuffle(zipped_data)
-        # new_fitnesses, new_population = zip(*zipped_data)
-        #
-        # maintain genetic diversity by randomly choosing which melodies to include, weighted toward the fitter melodies
-        # fitnesses = []
-        # population = []
-        #
-        # idx = 0
-        # while len(fitnesses) < POPULATION_SIZE:
-        #     rand_num = random.triangular(-5, 5, 3)
-        #     if new_fitnesses[idx] > rand_num:
-        #         fitnesses.append(new_fitnesses[idx])
-        #         population.append(new_population[idx])
-        #
-        #     idx += 1
-        #
-        #     if len(fitnesses) - (idx - 1) + len(new_fitnesses) == POPULATION_SIZE:
-        #         fitnesses += new_fitnesses[idx:]
-        #         population += new_population[idx:]
-
+        # sort the population and choose the most fit members to survive
         zipped_data = list(zip(new_fitnesses, new_population))
         zipped_data.sort(key=lambda x: x[0], reverse=True)
         sorted_fitnesses, sorted_population = list(zip(*zipped_data))

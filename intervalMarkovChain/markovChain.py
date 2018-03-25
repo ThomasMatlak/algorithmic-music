@@ -60,7 +60,7 @@ class MarkovChain(object):
         return _dict
 
     def create_transition_matrix(self, streams, chainType):
-        """  """
+        """ create a transition matrix for either intervals or rhythms using the Streams in streams """
         for stream in streams:
             prev_notes = []
 
